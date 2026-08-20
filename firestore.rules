@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Allow read/write for all application collections in the operational platform
+    match /users/{userId} {
+      allow read, write: if true;
+    }
+
+    match /serviceOrders/{orderId} {
+      allow read, write: if true;
+    }
+
+    match /serviceCategories/{categoryId} {
+      allow read, write: if true;
+    }
+
+    match /productPackages/{packageId} {
+      allow read, write: if true;
+    }
+
+    match /acUnits/{unitId} {
+      allow read, write: if true;
+    }
+
+    match /inventory/{itemId} {
+      allow read, write: if true;
+    }
+
+    match /inventoryTransactions/{trxId} {
+      allow read, write: if true;
+    }
+
+    match /attendanceRecords/{recordId} {
+      allow read, write: if true;
+    }
+
+    match /financialTransactions/{trxId} {
+      allow read, write: if true;
+    }
+
+    match /companyProfile/{docId} {
+      allow read, write: if true;
+    }
+
+    match /systemSettings/{settingId} {
+      allow read, write: if true;
+    }
+
+    match /system/{docId} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -1,0 +1,156 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User account for admin, technician, or customer",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "role": { "type": "string", "enum": ["SUPER_ADMIN", "ADMIN", "TEKNISI", "PELANGGAN_KANTOR", "PELANGGAN_UMUM"] },
+        "status": { "type": "string", "enum": ["ACTIVE", "SUSPENDED", "INACTIVE"] },
+        "avatar": { "type": "string" },
+        "companyName": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["id", "name", "email", "phone", "role", "status"]
+    },
+    "ServiceOrder": {
+      "title": "ServiceOrder",
+      "description": "Air conditioning service work order / SPK",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderNumber": { "type": "string" },
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "customerPhone": { "type": "string" },
+        "customerAddress": { "type": "string" },
+        "customerType": { "type": "string", "enum": ["UMUM", "KANTOR"] },
+        "technicianId": { "type": "string" },
+        "status": { "type": "string", "enum": ["MENUNGGU_KONFIRMASI", "DITUGASKAN", "DALAM_PERJALANAN", "SEDANG_DIKERJAKAN", "SELESAI", "DIBATALKAN"] },
+        "paymentStatus": { "type": "string", "enum": ["LUNAS", "BELUM_BAYAR", "DP"] },
+        "grandTotal": { "type": "number" },
+        "scheduledDate": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "orderNumber", "customerName", "customerPhone", "customerAddress", "status", "paymentStatus", "grandTotal"]
+    },
+    "InventoryItem": {
+      "title": "InventoryItem",
+      "description": "Spare part or material in warehouse inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "stock": { "type": "number" },
+        "unit": { "type": "string" },
+        "purchasePrice": { "type": "number" },
+        "sellingPrice": { "type": "number" }
+      },
+      "required": ["id", "code", "name", "category", "stock", "unit", "purchasePrice", "sellingPrice"]
+    },
+    "InventoryTransaction": {
+      "title": "InventoryTransaction",
+      "description": "Stock in/out log entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "itemId": { "type": "string" },
+        "type": { "type": "string", "enum": ["MASUK", "KELUAR", "PENYESUAIAN"] },
+        "quantity": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "itemId", "type", "quantity", "createdAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Technician GPS geotag attendance and work hours",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "technicianId": { "type": "string" },
+        "technicianName": { "type": "string" },
+        "date": { "type": "string" },
+        "clockInTime": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["id", "technicianId", "date", "clockInTime"]
+    },
+    "FinancialTransaction": {
+      "title": "FinancialTransaction",
+      "description": "Income or expense cash flow entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "type": { "type": "string", "enum": ["PEMASUKAN", "PENGELUARAN"] },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "date", "type", "amount", "description"]
+    },
+    "CompanyProfile": {
+      "title": "CompanyProfile",
+      "description": "Company identity, branding, and contact info",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "tagline": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["name", "phone", "email"]
+    },
+    "SystemSetting": {
+      "title": "SystemSetting",
+      "description": "Global RBAC permissions and configuration",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "value": { "type": "object" }
+      },
+      "required": ["id"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User accounts and profile information"
+    },
+    "/serviceOrders/{orderId}": {
+      "schema": "ServiceOrder",
+      "description": "All AC service orders, technician dispatch, and statuses"
+    },
+    "/inventory/{itemId}": {
+      "schema": "InventoryItem",
+      "description": "Warehouse spare parts and items stock"
+    },
+    "/inventoryTransactions/{trxId}": {
+      "schema": "InventoryTransaction",
+      "description": "Audit trail of spare parts usage and incoming restocks"
+    },
+    "/attendanceRecords/{recordId}": {
+      "schema": "AttendanceRecord",
+      "description": "Daily technician attendance and geolocation logs"
+    },
+    "/financialTransactions/{trxId}": {
+      "schema": "FinancialTransaction",
+      "description": "Company financial income and expense ledger"
+    },
+    "/companyProfile/default": {
+      "schema": "CompanyProfile",
+      "description": "Company profile metadata for invoice printing and branding"
+    },
+    "/systemSettings/{settingId}": {
+      "schema": "SystemSetting",
+      "description": "Role access permissions matrix and salary config"
+    }
+  }
+}
