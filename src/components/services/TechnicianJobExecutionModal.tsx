@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ServiceOrder, TechnicalReport, SparePartUsed } from '../../types';
 import { SignaturePad } from '../common/SignaturePad';
+import { CameraPhotoCaptureModal } from '../common/CameraPhotoCaptureModal';
+import { compressImage } from '../../utils/imageCompressor';
 import { 
   X, 
   Wrench, 
@@ -14,7 +16,8 @@ import {
   Zap, 
   FileCheck, 
   Coins, 
-  Upload
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
@@ -39,24 +42,41 @@ export const TechnicianJobExecutionModal: React.FC<TechnicianJobExecutionModalPr
   const [drainageChecked, setDrainageChecked] = useState<boolean>(true);
   const [electricalChecked, setElectricalChecked] = useState<boolean>(true);
   const [technicianNotes, setTechnicianNotes] = useState<string>(
-    'Pembersihan evaporator dan condensor tuntas. Jalur pembuangan air lancar, parameter tekanan freon dan ampere stabil normal.'
+    order.technicalReport?.notes || 'Pembersihan evaporator dan condensor tuntas. Jalur pembuangan air lancar, parameter tekanan freon dan ampere stabil normal.'
   );
 
   // Photos (Before & After) with default realistic sample photos & custom file upload
-  const [beforePhotos, setBeforePhotos] = useState<string[]>([
-    'https://images.unsplash.com/photo-1581094288338-2314dddb7ece?w=500&auto=format&fit=crop&q=80',
-  ]);
-  const [afterPhotos, setAfterPhotos] = useState<string[]>([
-    'https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=500&auto=format&fit=crop&q=80',
-  ]);
+  const [beforePhotos, setBeforePhotos] = useState<string[]>(
+    order.technicalReport?.beforePhotos && order.technicalReport.beforePhotos.length > 0
+      ? order.technicalReport.beforePhotos
+      : ['https://images.unsplash.com/photo-1581094288338-2314dddb7ece?w=500&auto=format&fit=crop&q=80']
+  );
+  const [afterPhotos, setAfterPhotos] = useState<string[]>(
+    order.technicalReport?.afterPhotos && order.technicalReport.afterPhotos.length > 0
+      ? order.technicalReport.afterPhotos
+      : ['https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=500&auto=format&fit=crop&q=80']
+  );
+
+  // Camera Modal State
+  const [cameraModalConfig, setCameraModalConfig] = useState<{
+    isOpen: boolean;
+    target: 'before' | 'after' | 'paymentProof';
+    title: string;
+    description: string;
+  }>({
+    isOpen: false,
+    target: 'before',
+    title: '',
+    description: '',
+  });
 
   // Spare parts used from inventory
-  const [selectedParts, setSelectedParts] = useState<SparePartUsed[]>([]);
+  const [selectedParts, setSelectedParts] = useState<SparePartUsed[]>(order.sparePartsUsed || []);
   const [selectedInventoryId, setSelectedInventoryId] = useState<string>(inventory[0]?.id || '');
   const [partQty, setPartQty] = useState<number>(1);
 
   // Customer signature
-  const [customerSignature, setCustomerSignature] = useState<string>('');
+  const [customerSignature, setCustomerSignature] = useState<string>(order.technicalReport?.customerSignature || '');
 
   // Payment Details from Technician
   const [paymentMethod, setPaymentMethod] = useState<'TUNAI' | 'TRANSFER_BANK' | 'QRIS' | 'TEMPO_KANTOR'>(order.paymentMethod || 'TUNAI');
@@ -66,25 +86,65 @@ export const TechnicianJobExecutionModal: React.FC<TechnicianJobExecutionModalPr
   const [paymentProofPhoto, setPaymentProofPhoto] = useState<string>(order.paymentProofPhoto || '');
   const [paymentNotes, setPaymentNotes] = useState<string>(order.paymentNotes || '');
 
-  // Handle photo upload
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after' | 'paymentProof') => {
+  // Handle direct camera capture
+  const handleOpenLiveCamera = (target: 'before' | 'after' | 'paymentProof') => {
+    let title = 'Ambil Foto Kondisi Sebelum Servis';
+    let description = 'Arahkan kamera ke unit AC sebelum dibongkar atau dibersihkan.';
+
+    if (target === 'after') {
+      title = 'Ambil Foto Kondisi Sesudah Servis';
+      description = 'Arahkan kamera ke unit AC yang telah bersih dan selesai dirapikan.';
+    } else if (target === 'paymentProof') {
+      title = 'Ambil Foto Bukti Pembayaran / Struk / Kuitansi';
+      description = 'Arahkan kamera ke struk transfer bank, bukti bayar tunai, atau nota fisik.';
+    }
+
+    setCameraModalConfig({
+      isOpen: true,
+      target,
+      title,
+      description,
+    });
+  };
+
+  const handleCaptureFromModal = (compressedDataUrl: string) => {
+    if (cameraModalConfig.target === 'before') {
+      setBeforePhotos(prev => [...prev, compressedDataUrl]);
+    } else if (cameraModalConfig.target === 'after') {
+      setAfterPhotos(prev => [...prev, compressedDataUrl]);
+    } else if (cameraModalConfig.target === 'paymentProof') {
+      setPaymentProofPhoto(compressedDataUrl);
+    }
+    showNotification('Foto dari kamera berhasil disimpan!', 'success');
+  };
+
+  // Handle photo upload from file picker (with automatic compression)
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'before' | 'after' | 'paymentProof') => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     const file = files[0];
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        if (type === 'before') {
-          setBeforePhotos(prev => [...prev, event.target!.result as string]);
-        } else if (type === 'after') {
-          setAfterPhotos(prev => [...prev, event.target!.result as string]);
-        } else if (type === 'paymentProof') {
-          setPaymentProofPhoto(event.target!.result as string);
-        }
-        showNotification('Foto berhasil diunggah', 'success');
+    
+    try {
+      const compressed = await compressImage(file, 900, 900, 0.75);
+      if (type === 'before') {
+        setBeforePhotos(prev => [...prev, compressed]);
+      } else if (type === 'after') {
+        setAfterPhotos(prev => [...prev, compressed]);
+      } else if (type === 'paymentProof') {
+        setPaymentProofPhoto(compressed);
       }
-    };
-    reader.readAsDataURL(file);
+      showNotification('Foto berhasil diunggah & dikompres', 'success');
+    } catch (err) {
+      console.error('Upload error:', err);
+    }
+  };
+
+  const handleRemovePhoto = (type: 'before' | 'after', index: number) => {
+    if (type === 'before') {
+      setBeforePhotos(prev => prev.filter((_, idx) => idx !== index));
+    } else {
+      setAfterPhotos(prev => prev.filter((_, idx) => idx !== index));
+    }
   };
 
   const handleAddPart = () => {
@@ -131,11 +191,11 @@ export const TechnicianJobExecutionModal: React.FC<TechnicianJobExecutionModalPr
 
   const handleSubmitCompletion = () => {
     const report: TechnicalReport = {
-      initialFreonPressurePsi: initialPsi,
-      finalFreonPressurePsi: finalPsi,
-      ampereReading: ampere,
-      initialTempCelsius: initialTemp,
-      finalTempCelsius: finalTemp,
+      initialFreonPressurePsi: Number(initialPsi) || 0,
+      finalFreonPressurePsi: Number(finalPsi) || 0,
+      ampereReading: Number(ampere) || 0,
+      initialTempCelsius: Number(initialTemp) || 0,
+      finalTempCelsius: Number(finalTemp) || 0,
       cleaningDoneIndoor: cleanIndoor,
       cleaningDoneOutdoor: cleanOutdoor,
       drainageChecked: drainageChecked,
@@ -150,8 +210,8 @@ export const TechnicianJobExecutionModal: React.FC<TechnicianJobExecutionModalPr
     completeTechnicianJob(order.id, report, selectedParts, {
       paymentMethod,
       paymentAmountReceived: paymentMethod === 'TEMPO_KANTOR' ? 0 : paymentAmountReceived,
-      paymentProofPhoto,
-      paymentNotes,
+      paymentProofPhoto: paymentProofPhoto || undefined,
+      paymentNotes: paymentNotes || undefined,
     });
 
     try {
@@ -223,7 +283,7 @@ export const TechnicianJobExecutionModal: React.FC<TechnicianJobExecutionModalPr
                   step="0.1"
                   value={ampere}
                   onChange={e => setAmpere(Number(e.target.value))}
-                  className="w-full p-2 bg-black border border-white/20 rounded-xl text-white font-black"
+                  className="w-full p-2 bg-black border border-white/20 rounded-xl text-amber-400 font-black"
                 />
               </div>
 
@@ -243,7 +303,7 @@ export const TechnicianJobExecutionModal: React.FC<TechnicianJobExecutionModalPr
           {/* Checklist */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-3">
             <p className="font-black text-xs uppercase tracking-wider text-white">2. Checklist SOP Standar KoolFix</p>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <label className="flex items-center gap-2 p-2 bg-black/40 rounded-xl border border-white/5 cursor-pointer">
                 <input type="checkbox" checked={cleanIndoor} onChange={e => setCleanIndoor(e.target.checked)} className="rounded" />
                 <span>Pencucian Indoor & Filter Evaporator</span>
@@ -261,36 +321,104 @@ export const TechnicianJobExecutionModal: React.FC<TechnicianJobExecutionModalPr
                 <span>Pengecekan Terminal Listrik & Sensor</span>
               </label>
             </div>
+
+            <div>
+              <label className="block text-[10px] uppercase font-bold text-white/40 mb-1">Catatan Teknis Pengerjaan</label>
+              <textarea
+                rows={2}
+                value={technicianNotes}
+                onChange={e => setTechnicianNotes(e.target.value)}
+                className="w-full p-2.5 bg-black border border-white/20 rounded-xl text-white text-xs"
+                placeholder="Catatan kondisi unit atau temuan penting..."
+              />
+            </div>
           </div>
 
-          {/* Photos Upload (Before & After) */}
+          {/* Photos Upload & Direct Camera (Before & After) */}
           <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
-            <p className="font-black text-xs uppercase tracking-wider text-white">3. Bukti Foto Pengerjaan (Sebelum & Sesudah)</p>
+            <div className="flex items-center justify-between">
+              <p className="font-black text-xs uppercase tracking-wider text-white">3. Bukti Foto Pengerjaan (Kamera Langsung / File)</p>
+              <span className="text-[10px] text-blue-400 font-bold">Mendukung Kamera Langsung & Kompresi Otomatis</span>
+            </div>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] uppercase font-bold text-white/40 mb-2">Foto Kondisi SEBELUM (Before)</label>
+              {/* BEFORE PHOTOS */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[10px] uppercase font-bold text-white/60">Foto Kondisi SEBELUM (Before)</label>
+                  <span className="text-[10px] text-white/40">{beforePhotos.length} Foto</span>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   {beforePhotos.map((url, idx) => (
-                    <img key={idx} src={url} alt="Before" className="h-24 w-full object-cover rounded-xl border border-white/10" />
+                    <div key={idx} className="relative group h-24 rounded-xl overflow-hidden border border-white/10">
+                      <img src={url} alt="Before" className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePhoto('before', idx)}
+                        className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 text-white rounded-md text-[10px] opacity-80 group-hover:opacity-100 transition shadow"
+                        title="Hapus foto"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   ))}
-                  <label className="h-24 border border-dashed border-white/20 hover:border-white/40 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-black/40 text-white/40 hover:text-white">
+
+                  {/* Direct Camera Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenLiveCamera('before')}
+                    className="h-24 border-2 border-dashed border-blue-500/40 hover:border-blue-500 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 transition"
+                  >
+                    <Camera className="w-5 h-5 mb-1 text-blue-400" />
+                    <span className="text-[10px] font-black uppercase tracking-wider">Kamera Langsung</span>
+                  </button>
+
+                  {/* File Upload Button */}
+                  <label className="h-24 border border-dashed border-white/20 hover:border-white/40 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-black/40 text-white/40 hover:text-white transition">
                     <Upload className="w-5 h-5 mb-1" />
-                    <span className="text-[10px] font-bold">Unggah Foto</span>
+                    <span className="text-[10px] font-bold">Pilih Galeri</span>
                     <input type="file" accept="image/*" onChange={e => handlePhotoUpload(e, 'before')} className="hidden" />
                   </label>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] uppercase font-bold text-white/40 mb-2">Foto Kondisi SESUDAH (After)</label>
+              {/* AFTER PHOTOS */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-[10px] uppercase font-bold text-white/60">Foto Kondisi SESUDAH (After)</label>
+                  <span className="text-[10px] text-white/40">{afterPhotos.length} Foto</span>
+                </div>
+
                 <div className="grid grid-cols-2 gap-2">
                   {afterPhotos.map((url, idx) => (
-                    <img key={idx} src={url} alt="After" className="h-24 w-full object-cover rounded-xl border border-white/10" />
+                    <div key={idx} className="relative group h-24 rounded-xl overflow-hidden border border-white/10">
+                      <img src={url} alt="After" className="h-full w-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => handleRemovePhoto('after', idx)}
+                        className="absolute top-1 right-1 p-1 bg-red-600/80 hover:bg-red-600 text-white rounded-md text-[10px] opacity-80 group-hover:opacity-100 transition shadow"
+                        title="Hapus foto"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
                   ))}
-                  <label className="h-24 border border-dashed border-white/20 hover:border-white/40 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-black/40 text-white/40 hover:text-white">
+
+                  {/* Direct Camera Button */}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenLiveCamera('after')}
+                    className="h-24 border-2 border-dashed border-emerald-500/40 hover:border-emerald-500 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 transition"
+                  >
+                    <Camera className="w-5 h-5 mb-1 text-emerald-400" />
+                    <span className="text-[10px] font-black uppercase tracking-wider">Kamera Langsung</span>
+                  </button>
+
+                  {/* File Upload Button */}
+                  <label className="h-24 border border-dashed border-white/20 hover:border-white/40 rounded-xl flex flex-col items-center justify-center cursor-pointer bg-black/40 text-white/40 hover:text-white transition">
                     <Upload className="w-5 h-5 mb-1" />
-                    <span className="text-[10px] font-bold">Unggah Foto</span>
+                    <span className="text-[10px] font-bold">Pilih Galeri</span>
                     <input type="file" accept="image/*" onChange={e => handlePhotoUpload(e, 'after')} className="hidden" />
                   </label>
                 </div>
@@ -411,38 +539,52 @@ export const TechnicianJobExecutionModal: React.FC<TechnicianJobExecutionModalPr
               </div>
             )}
 
-            {/* Proof of Payment Photo Upload */}
+            {/* Proof of Payment Photo Upload & Direct Camera */}
             <div className="pt-2">
               <label className="block text-[10px] uppercase font-bold text-white/60 mb-2">
-                Foto Bukti Pembayaran / Struk Transfer / Kuitansi Fisik (Opsional tapi Direkomendasikan)
+                Foto Bukti Pembayaran / Struk Transfer / Kuitansi Fisik
               </label>
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 {paymentProofPhoto ? (
                   <div className="relative group">
                     <img
                       src={paymentProofPhoto}
                       alt="Bukti Bayar"
-                      className="h-20 w-24 object-cover rounded-xl border border-emerald-500/40"
+                      className="h-20 w-28 object-cover rounded-xl border-2 border-emerald-500/40 shadow-md"
                     />
                     <button
                       type="button"
                       onClick={() => setPaymentProofPhoto('')}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center text-white text-xs cursor-pointer shadow"
+                      className="absolute -top-2 -right-2 w-6 h-6 bg-red-600 hover:bg-red-500 rounded-full flex items-center justify-center text-white text-xs cursor-pointer shadow"
+                      title="Hapus foto bukti bayar"
                     >
                       ✕
                     </button>
                   </div>
                 ) : (
-                  <label className="h-20 px-4 border border-dashed border-white/20 hover:border-white/40 rounded-xl flex items-center gap-2 cursor-pointer bg-black/40 text-white/50 hover:text-white transition">
-                    <Upload className="w-4 h-4 text-blue-400" />
-                    <span className="text-[11px] font-bold">Unggah Foto Bukti Bayar / Struk</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={e => handlePhotoUpload(e, 'paymentProof')}
-                      className="hidden"
-                    />
-                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {/* Live Camera Button */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenLiveCamera('paymentProof')}
+                      className="h-16 px-4 border-2 border-dashed border-blue-500/40 hover:border-blue-500 rounded-xl flex items-center gap-2 cursor-pointer bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 transition"
+                    >
+                      <Camera className="w-4 h-4 text-blue-400" />
+                      <span className="text-[11px] font-black uppercase tracking-wider">Kamera Langsung</span>
+                    </button>
+
+                    {/* File / Gallery Upload */}
+                    <label className="h-16 px-4 border border-dashed border-white/20 hover:border-white/40 rounded-xl flex items-center gap-2 cursor-pointer bg-black/40 text-white/50 hover:text-white transition">
+                      <Upload className="w-4 h-4 text-white/70" />
+                      <span className="text-[11px] font-bold">Pilih Galeri</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={e => handlePhotoUpload(e, 'paymentProof')}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
                 )}
                 <div className="text-[10px] text-white/40 max-w-xs">
                   ℹ️ Admin kantor akan memverifikasi status 'LUNAS' berdasarkan bukti foto & metode pembayaran ini.
@@ -469,13 +611,22 @@ export const TechnicianJobExecutionModal: React.FC<TechnicianJobExecutionModalPr
 
           <button
             onClick={handleSubmitCompletion}
-            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-emerald-600/30 flex items-center gap-2"
+            className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-emerald-600/30 flex items-center gap-2 cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
             Konfirmasi Pengerjaan Selesai
           </button>
         </div>
       </div>
+
+      {/* Reusable Camera Capture Modal */}
+      <CameraPhotoCaptureModal
+        isOpen={cameraModalConfig.isOpen}
+        onClose={() => setCameraModalConfig(prev => ({ ...prev, isOpen: false }))}
+        onCapture={handleCaptureFromModal}
+        title={cameraModalConfig.title}
+        description={cameraModalConfig.description}
+      />
     </div>
   );
 };

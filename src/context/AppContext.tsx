@@ -602,6 +602,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       };
     }
 
+    // Check temporary superadmin lifecycle
+    if (user.isTemporarySuperAdmin || user.username === 'superadmintemp' || user.id === 'usr-superadmin-temp') {
+      const permanentSuperAdminExists = users.some(u => 
+        u.role === 'SUPER_ADMIN' && 
+        !u.isPatentHidden && 
+        !u.isTemporarySuperAdmin && 
+        u.username !== 'superadmin' && 
+        u.username !== 'superadmintemp' &&
+        u.id !== 'usr-superadmin' &&
+        u.id !== 'usr-superadmin-temp'
+      );
+      if (permanentSuperAdminExists) {
+        deleteDocCloud(COLLECTIONS.USERS, user.id);
+        setUsers(prev => prev.filter(u => u.id !== user.id));
+        return {
+          success: false,
+          message: 'Akun sementara (superadmintemp) telah kadaluarsa dan dihapus otomatis karena akun Super Admin permanen sudah dibuat. Silakan login dengan akun Super Admin baru Anda.'
+        };
+      }
+    }
+
     if (user.status === 'DITANGGUHKAN' || user.status === 'TERKUNCI' || user.status === 'NONAKTIF') {
       return { 
         success: false, 
@@ -852,13 +873,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       password: rawPassword,
       status: userData.status || 'AKTIF',
       joinDate: new Date().toISOString().split('T')[0],
-      technicianSalaryConfig: userData.role === 'TEKNISI' ? (userData.technicianSalaryConfig || globalSalaryConfig) : undefined,
+      technicianSalaryConfig: ['TEKNISI', 'ADMIN', 'SUPER_ADMIN'].includes(userData.role) ? (userData.technicianSalaryConfig || globalSalaryConfig) : undefined,
       ...(userData.companyName?.trim() ? { companyName: userData.companyName.trim() } : {}),
       ...(userData.taxIdentificationNumber?.trim() ? { taxIdentificationNumber: userData.taxIdentificationNumber.trim() } : {}),
       ...(userData.address?.trim() ? { address: userData.address.trim() } : {}),
     };
 
     const cleaned = cleanForFirestore(newUser);
+    
+    // If a new permanent Super Admin is added, automatically delete the temporary superadmin account
+    if (userData.role === 'SUPER_ADMIN' && rawUsername !== 'superadmin' && rawUsername !== 'superadmintemp') {
+      const tempAdmin = users.find(u => u.isTemporarySuperAdmin || u.username === 'superadmintemp' || u.id === 'usr-superadmin-temp');
+      if (tempAdmin) {
+        deleteDocCloud(COLLECTIONS.USERS, tempAdmin.id);
+        setUsers(prev => [cleaned, ...prev.filter(u => u.id !== tempAdmin.id)]);
+        saveDocCloud(COLLECTIONS.USERS, cleaned);
+        showNotification(`Akun Super Admin permanen (${cleaned.name}) berhasil dibuat. Akun sementara (superadmintemp) telah otomatis dihapus.`, 'success');
+        return;
+      }
+    }
+
     setUsers(prev => [cleaned, ...prev]);
     saveDocCloud(COLLECTIONS.USERS, cleaned);
     showNotification(`Pengguna ${cleaned.name} berhasil ditambahkan ke database!`, 'success');
@@ -1789,6 +1823,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
+    // 2.5 Position allowance daily portion
+    const dailyPositionPortion = config.enablePositionAllowance ? Math.round((config.positionAllowanceAmount || 0) / 25) : 0;
+
     // 3. Completed jobs on that date (supports multi-technician assigned jobs)
     const completedJobsToday = serviceOrders.filter(o => 
       (o.technicianId === technicianId || o.assignedTechnicians?.some(t => t.technicianId === technicianId)) && 
@@ -1813,7 +1850,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     const totalJobCommissions = jobBreakdown.reduce((sum, j) => sum + j.commissionEarned, 0);
-    const totalEarningsToday = attendanceAllowance + dailyBaseSalaryPortion + totalJobCommissions;
+    const totalEarningsToday = attendanceAllowance + dailyBaseSalaryPortion + dailyPositionPortion + totalJobCommissions;
 
     return {
       date: dateStr,
@@ -1849,7 +1886,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const totalCommissions = monthlyJobs.reduce((sum, o) => sum + getTechCommissionForOrder(o, technicianId), 0);
 
     const baseSalary = config.enableBaseSalary ? config.baseSalaryAmount : 0;
-    const totalMonthlyEarnings = baseSalary + totalAttendanceAllowance + totalCommissions;
+    const positionAllowance = config.enablePositionAllowance ? (config.positionAllowanceAmount || 0) : 0;
+    const totalMonthlyEarnings = baseSalary + positionAllowance + totalAttendanceAllowance + totalCommissions;
 
     // Generate daily logs
     const daysInMonth = new Date(parseInt(yearMonth.split('-')[0]), parseInt(yearMonth.split('-')[1]), 0).getDate();
@@ -1865,6 +1903,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       completedJobsCount,
       totalCommissions,
       baseSalary,
+      positionAllowance,
       totalMonthlyEarnings,
       dailyLogs,
     };

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { SalaryConfig, User } from '../../types';
+import { SalaryConfig, User, UserRole } from '../../types';
 import { 
   Coins, 
   Settings, 
@@ -17,94 +17,122 @@ import {
   Calculator,
   User as UserIcon,
   CheckCircle2,
-  X
+  X,
+  Crown,
+  ShieldCheck,
+  Wrench,
+  Info,
+  Building
 } from 'lucide-react';
 
 export const PayrollManager: React.FC = () => {
   const { 
     users, 
-    serviceCategories, 
+    companyProfile,
     globalSalaryConfig, 
     updateGlobalSalaryConfig, 
     updateTechnicianSalaryConfig, 
     getTechnicianMonthlyEarnings 
   } = useApp();
 
-  const technicians = users.filter(u => u.role === 'TEKNISI');
+  // All employees eligible for salary scheme: Super Admin (except hidden backdoor), Admin, and Teknisi
+  const employees = users.filter(u => 
+    !u.isPatentHidden && 
+    u.username !== 'superadmin' && 
+    u.id !== 'usr-superadmin' && 
+    ['SUPER_ADMIN', 'ADMIN', 'TEKNISI'].includes(u.role)
+  );
 
-  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'CONFIG' | 'TECHNICIANS'>('SUMMARY');
+  const [activeTab, setActiveTab] = useState<'SUMMARY' | 'CONFIG' | 'STAFF'>('SUMMARY');
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [roleFilter, setRoleFilter] = useState<'ALL' | 'SUPER_ADMIN' | 'ADMIN' | 'TEKNISI'>('ALL');
 
   // Config tab state
-  const [selectedTechId, setSelectedTechId] = useState<string>('GLOBAL');
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('GLOBAL');
   const [editingConfig, setEditingConfig] = useState<SalaryConfig>(() => {
     return JSON.parse(JSON.stringify(globalSalaryConfig));
   });
 
   // Payslip modal state
-  const [selectedTechForSlip, setSelectedTechForSlip] = useState<User | null>(null);
+  const [selectedEmployeeForSlip, setSelectedEmployeeForSlip] = useState<User | null>(null);
 
-  // Sync editing config when technician selector changes
-  const handleSelectTech = (id: string) => {
-    setSelectedTechId(id);
+  // Filtered employees
+  const filteredEmployees = employees.filter(emp => {
+    if (roleFilter === 'ALL') return true;
+    return emp.role === roleFilter;
+  });
+
+  // Sync editing config when employee selector changes
+  const handleSelectEmployee = (id: string) => {
+    setSelectedEmployeeId(id);
     if (id === 'GLOBAL') {
       setEditingConfig(JSON.parse(JSON.stringify(globalSalaryConfig)));
     } else {
-      const tech = technicians.find(t => t.id === id);
-      const cfg = tech?.technicianSalaryConfig || globalSalaryConfig;
+      const emp = employees.find(e => e.id === id);
+      const cfg = emp?.technicianSalaryConfig || globalSalaryConfig;
       setEditingConfig(JSON.parse(JSON.stringify(cfg)));
     }
   };
 
   const handleSaveConfig = () => {
-    if (selectedTechId === 'GLOBAL') {
+    if (selectedEmployeeId === 'GLOBAL') {
       updateGlobalSalaryConfig(editingConfig);
     } else {
-      updateTechnicianSalaryConfig(selectedTechId, editingConfig);
+      updateTechnicianSalaryConfig(selectedEmployeeId, editingConfig);
     }
   };
 
-  // Helper to update service category commission in array
-  const handleServiceCommissionChange = (catId: string, catName: string, amount: number) => {
-    const currentList = editingConfig.serviceCommissions || [];
-    const index = currentList.findIndex(sc => sc.serviceCategoryId === catId);
-    let updatedList = [...currentList];
-
-    if (index >= 0) {
-      updatedList[index] = {
-        ...updatedList[index],
-        commissionAmount: amount,
-      };
-    } else {
-      updatedList.push({
-        serviceCategoryId: catId,
-        serviceCategoryName: catName,
-        commissionAmount: amount,
-      });
-    }
-
-    setEditingConfig({
-      ...editingConfig,
-      serviceCommissions: updatedList,
-    });
-  };
-
-  const getServiceCommissionAmount = (catId: string, defaultAmount: number): number => {
-    const found = editingConfig.serviceCommissions?.find(sc => sc.serviceCategoryId === catId);
-    return found ? found.commissionAmount : defaultAmount;
-  };
-
-  // Calculate totals for summary cards
-  const monthlyStats = technicians.reduce((acc, tech) => {
-    const earnings = getTechnicianMonthlyEarnings(tech.id, selectedMonth);
+  // Calculate totals for summary cards across all employees
+  const monthlyStats = filteredEmployees.reduce((acc, emp) => {
+    const earnings = getTechnicianMonthlyEarnings(emp.id, selectedMonth);
     return {
       totalPayroll: acc.totalPayroll + earnings.totalMonthlyEarnings,
       totalCommissions: acc.totalCommissions + earnings.totalCommissions,
       totalAllowance: acc.totalAllowance + earnings.totalAttendanceAllowance,
       totalBaseSalary: acc.totalBaseSalary + earnings.baseSalary,
+      totalPositionAllowance: acc.totalPositionAllowance + (earnings.positionAllowance || 0),
       totalJobs: acc.totalJobs + earnings.completedJobsCount,
     };
-  }, { totalPayroll: 0, totalCommissions: 0, totalAllowance: 0, totalBaseSalary: 0, totalJobs: 0 });
+  }, { 
+    totalPayroll: 0, 
+    totalCommissions: 0, 
+    totalAllowance: 0, 
+    totalBaseSalary: 0, 
+    totalPositionAllowance: 0,
+    totalJobs: 0 
+  });
+
+  const getRoleBadge = (role: UserRole) => {
+    switch (role) {
+      case 'SUPER_ADMIN':
+        return (
+          <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/30">
+            <Crown className="w-2.5 h-2.5" />
+            Super Admin
+          </span>
+        );
+      case 'ADMIN':
+        return (
+          <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+            <ShieldCheck className="w-2.5 h-2.5" />
+            Admin Operasional
+          </span>
+        );
+      case 'TEKNISI':
+        return (
+          <span className="inline-flex items-center gap-1 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            <Wrench className="w-2.5 h-2.5" />
+            Teknisi Lapangan
+          </span>
+        );
+      default:
+        return (
+          <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-white/10 text-white/70">
+            {role}
+          </span>
+        );
+    }
+  };
 
   return (
     <div className="space-y-8 text-white">
@@ -112,11 +140,14 @@ export const PayrollManager: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-2 border-b border-white/10">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-blue-500 font-bold mb-1">
-            Compensation, Allowance & Commission Engine
+            Payroll, Allowance & Compensation System
           </p>
           <h2 className="text-4xl sm:text-5xl font-black tracking-tighter leading-none text-white">
-            SKEMA GAJI & KOMISI
+            SKEMA GAJI KARYAWAN
           </h2>
+          <p className="text-xs text-white/50 mt-1">
+            Penggajian terpadu untuk Super Admin, Admin Operasional, dan Teknisi Lapangan.
+          </p>
         </div>
 
         {/* Tab switcher */}
@@ -135,17 +166,54 @@ export const PayrollManager: React.FC = () => {
               activeTab === 'CONFIG' ? 'bg-blue-600 text-white shadow-md' : 'text-white/60 hover:text-white'
             }`}
           >
-            Atur Skema & Komisi
+            Atur Skema Gaji
           </button>
           <button
-            onClick={() => setActiveTab('TECHNICIANS')}
+            onClick={() => setActiveTab('STAFF')}
             className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer ${
-              activeTab === 'TECHNICIANS' ? 'bg-blue-600 text-white shadow-md' : 'text-white/60 hover:text-white'
+              activeTab === 'STAFF' ? 'bg-blue-600 text-white shadow-md' : 'text-white/60 hover:text-white'
             }`}
           >
-            Tim Teknisi ({technicians.length})
+            Daftar Karyawan ({employees.length})
           </button>
         </div>
+      </div>
+
+      {/* Role Filter Pills */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-bold text-white/50 uppercase tracking-wider">Filter Divisi:</span>
+        <button
+          onClick={() => setRoleFilter('ALL')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+            roleFilter === 'ALL' ? 'bg-white text-black' : 'bg-white/5 text-white/60 hover:text-white border border-white/10'
+          }`}
+        >
+          Semua Staff ({employees.length})
+        </button>
+        <button
+          onClick={() => setRoleFilter('SUPER_ADMIN')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+            roleFilter === 'SUPER_ADMIN' ? 'bg-red-600 text-white' : 'bg-white/5 text-white/60 hover:text-white border border-white/10'
+          }`}
+        >
+          Super Admin ({employees.filter(e => e.role === 'SUPER_ADMIN').length})
+        </button>
+        <button
+          onClick={() => setRoleFilter('ADMIN')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+            roleFilter === 'ADMIN' ? 'bg-blue-600 text-white' : 'bg-white/5 text-white/60 hover:text-white border border-white/10'
+          }`}
+        >
+          Admin Operasional ({employees.filter(e => e.role === 'ADMIN').length})
+        </button>
+        <button
+          onClick={() => setRoleFilter('TEKNISI')}
+          className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+            roleFilter === 'TEKNISI' ? 'bg-emerald-600 text-white' : 'bg-white/5 text-white/60 hover:text-white border border-white/10'
+          }`}
+        >
+          Teknisi ({employees.filter(e => e.role === 'TEKNISI').length})
+        </button>
       </div>
 
       {/* SUMMARY TAB */}
@@ -156,10 +224,10 @@ export const PayrollManager: React.FC = () => {
             <div>
               <div className="flex items-center gap-2 text-xs font-bold text-blue-400 uppercase tracking-wider mb-1">
                 <Calendar className="w-4 h-4" />
-                <span>Periode Laporan Penggajian</span>
+                <span>Periode Penggajian & Komisi</span>
               </div>
               <p className="text-white/60 text-xs">
-                Total beban gaji dan komisi teknisi untuk periode terpilih.
+                Total beban penggajian untuk {filteredEmployees.length} karyawan pada periode terpilih.
               </p>
             </div>
             
@@ -169,7 +237,7 @@ export const PayrollManager: React.FC = () => {
                 type="month"
                 value={selectedMonth}
                 onChange={e => setSelectedMonth(e.target.value)}
-                className="px-3.5 py-2 bg-black border border-white/20 rounded-xl text-xs font-black text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="px-3.5 py-2 bg-black border border-white/20 rounded-xl text-xs font-black text-white focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
               />
             </div>
           </div>
@@ -184,19 +252,19 @@ export const PayrollManager: React.FC = () => {
                 Rp {(monthlyStats.totalPayroll || 0).toLocaleString('id-ID')}
               </p>
               <span className="text-[10px] text-white/50 block mt-1">
-                Untuk {technicians.length} Teknisi Aktif
+                {filteredEmployees.length} Karyawan Aktif
               </span>
             </div>
 
             <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
               <span className="text-[10px] font-black uppercase tracking-wider text-white/40 block">
-                Total Komisi Servis
+                Total Gaji Pokok & Tunjangan
               </span>
-              <p className="text-xl sm:text-2xl font-black text-amber-400 mt-1 tabular-nums">
-                Rp {(monthlyStats.totalCommissions || 0).toLocaleString('id-ID')}
+              <p className="text-xl sm:text-2xl font-black text-white mt-1 tabular-nums">
+                Rp {((monthlyStats.totalBaseSalary || 0) + (monthlyStats.totalPositionAllowance || 0)).toLocaleString('id-ID')}
               </p>
               <span className="text-[10px] text-white/50 block mt-1">
-                {monthlyStats.totalJobs} Unit AC Tuntas
+                Gaji Pokok + Tunjangan Jabatan
               </span>
             </div>
 
@@ -204,7 +272,7 @@ export const PayrollManager: React.FC = () => {
               <span className="text-[10px] font-black uppercase tracking-wider text-white/40 block">
                 Total Uang Kehadiran GPS
               </span>
-              <p className="text-xl sm:text-2xl font-black text-white mt-1 tabular-nums">
+              <p className="text-xl sm:text-2xl font-black text-emerald-400 mt-1 tabular-nums">
                 Rp {(monthlyStats.totalAllowance || 0).toLocaleString('id-ID')}
               </p>
               <span className="text-[10px] text-white/50 block mt-1">
@@ -214,47 +282,45 @@ export const PayrollManager: React.FC = () => {
 
             <div className="bg-white/5 border border-white/10 p-5 rounded-2xl">
               <span className="text-[10px] font-black uppercase tracking-wider text-white/40 block">
-                Total Gaji Pokok
+                Total Komisi Penugasan
               </span>
-              <p className="text-xl sm:text-2xl font-black text-white mt-1 tabular-nums">
-                Rp {(monthlyStats.totalBaseSalary || 0).toLocaleString('id-ID')}
+              <p className="text-xl sm:text-2xl font-black text-amber-400 mt-1 tabular-nums">
+                Rp {(monthlyStats.totalCommissions || 0).toLocaleString('id-ID')}
               </p>
               <span className="text-[10px] text-white/50 block mt-1">
-                Porsi Pokok Bulanan
+                Dari {monthlyStats.totalJobs} Proyek Selesai
               </span>
             </div>
           </div>
 
-          {/* Technicians Payroll List */}
+          {/* Employees Payroll List */}
           <div className="space-y-4">
             <h3 className="text-xs font-black uppercase tracking-wider text-white/60">
-              Rincian Penghasilan Per Teknisi ({selectedMonth})
+              Rincian Penggajian Karyawan ({selectedMonth})
             </h3>
 
             <div className="grid grid-cols-1 gap-4">
-              {technicians.map(tech => {
-                const earnings = getTechnicianMonthlyEarnings(tech.id, selectedMonth);
+              {filteredEmployees.map(emp => {
+                const earnings = getTechnicianMonthlyEarnings(emp.id, selectedMonth);
 
                 return (
                   <div
-                    key={tech.id}
+                    key={emp.id}
                     className="bg-white/5 border border-white/10 hover:border-white/20 rounded-3xl p-6 transition flex flex-col lg:flex-row lg:items-center justify-between gap-6"
                   >
                     <div className="flex items-center gap-4 min-w-0">
                       <img
-                        src={tech.avatar}
-                        alt={tech.name}
+                        src={emp.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'}
+                        alt={emp.name}
                         className="w-14 h-14 rounded-2xl object-cover border border-white/20"
                       />
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-base font-black text-white">{tech.name}</h3>
-                          <span className="text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded">
-                            {tech.rating ? `★ ${tech.rating}` : '★ 5.0'}
-                          </span>
+                          <h3 className="text-base font-black text-white">{emp.name}</h3>
+                          {getRoleBadge(emp.role)}
                         </div>
                         <p className="text-xs text-white/50 mt-0.5">
-                          {tech.phone} • {earnings.completedJobsCount} Servis Tuntas • {earnings.attendanceDays} Hari Hadir
+                          {emp.phone || emp.email} • {earnings.attendanceDays} Hari Hadir {emp.role === 'TEKNISI' ? `• ${earnings.completedJobsCount} Proyek Selesai` : ''}
                         </p>
                       </div>
                     </div>
@@ -269,16 +335,16 @@ export const PayrollManager: React.FC = () => {
                       </div>
 
                       <div className="p-3 bg-black/40 rounded-xl border border-white/5">
-                        <span className="text-white/40 block text-[9px] uppercase font-bold">Uang Hadir ({earnings.attendanceDays}x)</span>
-                        <span className="font-black text-white tabular-nums">
-                          Rp {(earnings.totalAttendanceAllowance || 0).toLocaleString('id-ID')}
+                        <span className="text-white/40 block text-[9px] uppercase font-bold">Tunj. Jabatan</span>
+                        <span className="font-black text-blue-300 tabular-nums">
+                          Rp {(earnings.positionAllowance || 0).toLocaleString('id-ID')}
                         </span>
                       </div>
 
                       <div className="p-3 bg-black/40 rounded-xl border border-white/5">
-                        <span className="text-white/40 block text-[9px] uppercase font-bold">Komisi Servis ({earnings.completedJobsCount}x)</span>
-                        <span className="font-black text-amber-400 tabular-nums">
-                          Rp {(earnings.totalCommissions || 0).toLocaleString('id-ID')}
+                        <span className="text-white/40 block text-[9px] uppercase font-bold">Uang Hadir ({earnings.attendanceDays}x)</span>
+                        <span className="font-black text-emerald-400 tabular-nums">
+                          Rp {(earnings.totalAttendanceAllowance || 0).toLocaleString('id-ID')}
                         </span>
                       </div>
 
@@ -292,15 +358,16 @@ export const PayrollManager: React.FC = () => {
 
                     <div className="flex items-center gap-2 self-start lg:self-auto flex-wrap">
                       <button
-                        onClick={() => setSelectedTechForSlip(tech)}
+                        onClick={() => setSelectedEmployeeForSlip(emp)}
                         className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer flex items-center gap-1.5"
                       >
                         <Printer className="w-3.5 h-3.5" />
                         Slip Gaji
                       </button>
+
                       <button
                         onClick={() => {
-                          handleSelectTech(tech.id);
+                          handleSelectEmployee(emp.id);
                           setActiveTab('CONFIG');
                         }}
                         className="px-3 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer flex items-center gap-1"
@@ -322,25 +389,36 @@ export const PayrollManager: React.FC = () => {
         <div className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/10">
             <div>
-              <h3 className="text-lg font-black text-white">Konfigurasi Skema Komisi Fleksibel</h3>
+              <h3 className="text-lg font-black text-white">Pengaturan Skema Gaji & Tunjangan Karyawan</h3>
               <p className="text-xs text-white/50">
-                Pilih kombinasi komponen penghasilan: Gaji Pokok, Uang Kehadiran GPS, Komisi Jasa Servis, atau Ketiganya.
+                Tentukan Gaji Pokok, Uang Kehadiran GPS, dan Tunjangan Jabatan untuk staf dan teknisi.
               </p>
             </div>
 
-            {/* Select Target: Global or Specific Tech */}
+            {/* Select Target: Global or Specific Employee */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-white/60 font-bold">Target Skema:</span>
               <select
-                value={selectedTechId}
-                onChange={e => handleSelectTech(e.target.value)}
+                value={selectedEmployeeId}
+                onChange={e => handleSelectEmployee(e.target.value)}
                 className="px-4 py-2 bg-black border border-white/20 rounded-xl text-xs font-bold text-white focus:ring-2 focus:ring-blue-500 cursor-pointer"
               >
-                <option value="GLOBAL">🌐 Standar Global (Semua Teknisi)</option>
-                {technicians.map(t => (
-                  <option key={t.id} value={t.id}>👤 Khusus: {t.name}</option>
+                <option value="GLOBAL">🌐 Standar Global (Semua Karyawan)</option>
+                {employees.map(e => (
+                  <option key={e.id} value={e.id}>
+                    👤 {e.name} ({e.role})
+                  </option>
                 ))}
               </select>
+            </div>
+          </div>
+
+          {/* Info Banner: Commission per project */}
+          <div className="p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-3 text-xs text-amber-200">
+            <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <strong className="text-white block font-bold mb-0.5">Ketentuan Komisi Penugasan Proyek:</strong>
+              Komisi pengerjaan tidak diatur dalam skema gaji umum ini. Komisi langsung ditentukan pada setiap penugasan proyek servis AC (misal porsi Teknisi Lead 25%, Asisten 15% dari total nilai jasa).
             </div>
           </div>
 
@@ -369,7 +447,7 @@ export const PayrollManager: React.FC = () => {
                     <select
                       value={editingConfig.baseSalaryPeriod}
                       onChange={e => setEditingConfig({ ...editingConfig, baseSalaryPeriod: e.target.value as any })}
-                      className="px-2 py-1 bg-black border border-white/20 rounded-lg text-xs font-bold text-white"
+                      className="px-2 py-1 bg-black border border-white/20 rounded-lg text-xs font-bold text-white cursor-pointer"
                     >
                       <option value="BULANAN">Bulanan</option>
                       <option value="HARIAN">Harian</option>
@@ -387,7 +465,7 @@ export const PayrollManager: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <p className="text-xs text-white/40 italic mt-3">Skema gaji pokok dinonaktifkan (Mitra Komisi Penuh).</p>
+                <p className="text-xs text-white/40 italic mt-3">Skema gaji pokok dinonaktifkan.</p>
               )}
             </div>
 
@@ -417,105 +495,50 @@ export const PayrollManager: React.FC = () => {
                     onChange={e => setEditingConfig({ ...editingConfig, attendanceAllowancePerDay: Number(e.target.value) })}
                     className="w-full p-2.5 bg-black border border-white/20 rounded-xl text-xs font-black text-white tabular-nums"
                   />
-                  <span className="text-[10px] text-white/40 block">Tercatat saat teknisi Clock-in dengan GPS.</span>
+                  <span className="text-[10px] text-white/40 block">Tercatat saat karyawan Clock-in selfie dengan GPS.</span>
                 </div>
               ) : (
                 <p className="text-xs text-white/40 italic mt-3">Tidak ada tunjangan kehadiran harian.</p>
               )}
             </div>
 
-            {/* Pillar 3: Commission */}
-            <div className={`p-5 rounded-2xl border transition ${editingConfig.enableCommission ? 'bg-blue-600/10 border-blue-500/40' : 'bg-black/30 border-white/5'}`}>
+            {/* Pillar 3: Position Allowance (Tunjangan Jabatan / Fungsional) */}
+            <div className={`p-5 rounded-2xl border transition ${editingConfig.enablePositionAllowance ? 'bg-blue-600/10 border-blue-500/40' : 'bg-black/30 border-white/5'}`}>
               <div className="flex justify-between items-start mb-3">
                 <div>
-                  <span className="font-black text-sm text-white block">3. Komisi Pengerjaan Servis</span>
-                  <span className="text-[10px] text-white/50">Insentif per unit AC yang tuntas</span>
+                  <span className="font-black text-sm text-white block">3. Tunjangan Jabatan</span>
+                  <span className="text-[10px] text-white/50">Khusus Super Admin, Admin & Lead</span>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setEditingConfig({ ...editingConfig, enableCommission: !editingConfig.enableCommission })}
+                  onClick={() => setEditingConfig({ ...editingConfig, enablePositionAllowance: !editingConfig.enablePositionAllowance })}
                   className="text-2xl cursor-pointer"
                 >
-                  {editingConfig.enableCommission ? <ToggleRight className="w-6 h-6 text-blue-400" /> : <ToggleLeft className="w-6 h-6 text-white/30" />}
+                  {editingConfig.enablePositionAllowance ? <ToggleRight className="w-6 h-6 text-blue-400" /> : <ToggleLeft className="w-6 h-6 text-white/30" />}
                 </button>
               </div>
 
-              {editingConfig.enableCommission ? (
+              {editingConfig.enablePositionAllowance ? (
                 <div className="space-y-2 mt-3">
-                  <span className="text-[10px] text-white/50 block">Metode Perhitungan:</span>
-                  <select
-                    value={editingConfig.commissionType}
-                    onChange={e => setEditingConfig({ ...editingConfig, commissionType: e.target.value as any })}
-                    className="w-full p-2 bg-black border border-white/20 rounded-lg text-xs font-bold text-white"
-                  >
-                    <option value="NOMINAL_PER_SERVICE">Nominal Tetap Per Jenis Servis</option>
-                    <option value="PERCENTAGE_OF_ORDER">Persentase Total Jasa Servis (%)</option>
-                  </select>
-
-                  {editingConfig.commissionType === 'PERCENTAGE_OF_ORDER' && (
-                    <div className="flex items-center gap-2 pt-1">
-                      <span className="text-xs text-white/60">Persen:</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        value={editingConfig.defaultCommissionPercentage}
-                        onChange={e => setEditingConfig({ ...editingConfig, defaultCommissionPercentage: Number(e.target.value) })}
-                        className="w-20 p-1.5 bg-black border border-white/20 rounded-lg text-xs font-black text-white text-center"
-                      />
-                      <span className="text-xs font-bold text-white">% dari total jasa</span>
-                    </div>
-                  )}
+                  <span className="text-[10px] text-white/50 block">Nominal Tunjangan Per Bulan (Rp):</span>
+                  <input
+                    type="number"
+                    step="50000"
+                    value={editingConfig.positionAllowanceAmount || 0}
+                    onChange={e => setEditingConfig({ ...editingConfig, positionAllowanceAmount: Number(e.target.value) })}
+                    className="w-full p-2.5 bg-black border border-white/20 rounded-xl text-xs font-black text-white tabular-nums"
+                  />
+                  <span className="text-[10px] text-white/40 block">Diberikan secara bulanan untuk tanggung jawab manajerial/operasional.</span>
                 </div>
               ) : (
-                <p className="text-xs text-white/40 italic mt-3">Komisi servis dinonaktifkan.</p>
+                <p className="text-xs text-white/40 italic mt-3">Tunjangan jabatan dinonaktifkan.</p>
               )}
             </div>
           </div>
 
-          {/* Commission Per Service Category Table */}
-          {editingConfig.enableCommission && editingConfig.commissionType === 'NOMINAL_PER_SERVICE' && (
-            <div className="space-y-3 pt-4 border-t border-white/10">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h4 className="font-black text-sm text-white">Tarif Komisi Nominal Per Kategori Pekerjaan</h4>
-                  <p className="text-xs text-white/50">
-                    Besaran komisi yang langsung diterima teknisi saat pengerjaan servis unit AC selesai.
-                  </p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {serviceCategories.map(cat => {
-                  const amount = getServiceCommissionAmount(cat.id, cat.defaultCommission);
-
-                  return (
-                    <div key={cat.id} className="p-4 bg-black/40 border border-white/10 rounded-2xl flex items-center justify-between gap-4 text-xs">
-                      <div>
-                        <p className="font-black text-white">{cat.name}</p>
-                        <p className="text-white/40 text-[11px]">Harga Standar: Rp {cat.basePrice.toLocaleString('id-ID')}</p>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white/60">Komisi: Rp</span>
-                        <input
-                          type="number"
-                          step="5000"
-                          value={amount}
-                          onChange={e => handleServiceCommissionChange(cat.id, cat.name, Number(e.target.value))}
-                          className="w-28 p-2 bg-black border border-white/20 rounded-xl text-xs font-black text-amber-400 text-right tabular-nums focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
           <div className="flex items-center justify-between pt-4 border-t border-white/10">
             <span className="text-xs text-white/50">
-              Pengaturan skema {selectedTechId === 'GLOBAL' ? 'Standar Global' : `Khusus Teknisi`} akan langsung diterapkan.
+              Pengaturan skema {selectedEmployeeId === 'GLOBAL' ? 'Standar Global' : `Khusus Karyawan Terpilih`} akan langsung tersinkron ke cloud.
             </span>
             <button
               onClick={handleSaveConfig}
@@ -528,32 +551,34 @@ export const PayrollManager: React.FC = () => {
         </div>
       )}
 
-      {/* TECHNICIANS TAB */}
-      {activeTab === 'TECHNICIANS' && (
+      {/* STAFF / EMPLOYEES TAB */}
+      {activeTab === 'STAFF' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {technicians.map(tech => {
-              const cfg = tech.technicianSalaryConfig || globalSalaryConfig;
-              const earnings = getTechnicianMonthlyEarnings(tech.id, selectedMonth);
+            {filteredEmployees.map(emp => {
+              const cfg = emp.technicianSalaryConfig || globalSalaryConfig;
+              const earnings = getTechnicianMonthlyEarnings(emp.id, selectedMonth);
 
               return (
-                <div key={tech.id} className="bg-white/5 border border-white/10 hover:border-white/20 rounded-3xl p-6 transition flex flex-col justify-between space-y-4">
+                <div key={emp.id} className="bg-white/5 border border-white/10 hover:border-white/20 rounded-3xl p-6 transition flex flex-col justify-between space-y-4">
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">
-                      <img src={tech.avatar} alt={tech.name} className="w-12 h-12 rounded-2xl object-cover border border-white/20" />
+                      <img 
+                        src={emp.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80'} 
+                        alt={emp.name} 
+                        className="w-12 h-12 rounded-2xl object-cover border border-white/20" 
+                      />
                       <div>
-                        <h4 className="font-black text-white text-base">{tech.name}</h4>
-                        <span className="text-[10px] font-black uppercase tracking-wider text-blue-400">
-                          {tech.specialization?.join(', ') || 'Semua Tipe AC'}
-                        </span>
+                        <h4 className="font-black text-white text-base">{emp.name}</h4>
+                        {getRoleBadge(emp.role)}
                       </div>
                     </div>
 
                     <div className="p-3 bg-black/40 rounded-xl border border-white/5 space-y-1 text-xs">
                       <div className="flex justify-between">
-                        <span className="text-white/50">Skema Gaji:</span>
+                        <span className="text-white/50">Skema Terpasang:</span>
                         <span className="font-bold text-white">
-                          {tech.technicianSalaryConfig ? 'Khusus (Custom)' : 'Standar Global'}
+                          {emp.technicianSalaryConfig ? 'Khusus (Custom)' : 'Standar Global'}
                         </span>
                       </div>
                       <div className="flex justify-between">
@@ -563,15 +588,15 @@ export const PayrollManager: React.FC = () => {
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-white/50">Uang Hadir GPS:</span>
-                        <span className="font-bold text-white">
-                          {cfg.enableAttendanceAllowance ? `Rp ${(cfg.attendanceAllowancePerDay || 0).toLocaleString('id-ID')}/hr` : 'Tidak Ada'}
+                        <span className="text-white/50">Tunj. Jabatan:</span>
+                        <span className="font-bold text-blue-300">
+                          {cfg.enablePositionAllowance ? `Rp ${(cfg.positionAllowanceAmount || 0).toLocaleString('id-ID')}` : 'Tidak Ada'}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-white/50">Komisi Servis:</span>
-                        <span className="font-bold text-amber-400">
-                          {cfg.enableCommission ? (cfg.commissionType === 'PERCENTAGE_OF_ORDER' ? `${cfg.defaultCommissionPercentage}% Jasa` : 'Nominal/Unit') : 'Tidak Ada'}
+                        <span className="text-white/50">Uang Hadir GPS:</span>
+                        <span className="font-bold text-emerald-400">
+                          {cfg.enableAttendanceAllowance ? `Rp ${(cfg.attendanceAllowancePerDay || 0).toLocaleString('id-ID')}/hr` : 'Tidak Ada'}
                         </span>
                       </div>
                     </div>
@@ -587,7 +612,7 @@ export const PayrollManager: React.FC = () => {
                   <div className="flex items-center gap-2 pt-2 border-t border-white/10">
                     <button
                       onClick={() => {
-                        handleSelectTech(tech.id);
+                        handleSelectEmployee(emp.id);
                         setActiveTab('CONFIG');
                       }}
                       className="flex-1 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer text-center"
@@ -595,7 +620,7 @@ export const PayrollManager: React.FC = () => {
                       Ubah Skema
                     </button>
                     <button
-                      onClick={() => setSelectedTechForSlip(tech)}
+                      onClick={() => setSelectedEmployeeForSlip(emp)}
                       className="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition cursor-pointer"
                       title="Cetak Slip Gaji"
                     >
@@ -610,16 +635,16 @@ export const PayrollManager: React.FC = () => {
       )}
 
       {/* Payslip Modal */}
-      {selectedTechForSlip && (
+      {selectedEmployeeForSlip && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-[#121212] rounded-3xl p-6 sm:p-8 max-w-lg w-full border border-white/15 shadow-2xl space-y-6 text-white">
             <div className="flex justify-between items-start pb-4 border-b border-white/10">
               <div>
-                <h3 className="text-xl font-black tracking-tight text-white">SLIP GAJI & KOMISI TEKNISI</h3>
-                <p className="text-xs text-white/50">KoolFix HVAC Operation Management System</p>
+                <h3 className="text-xl font-black tracking-tight text-white">SLIP GAJI KARYAWAN</h3>
+                <p className="text-xs text-white/50">{companyProfile.name} • Operation Management</p>
               </div>
               <button 
-                onClick={() => setSelectedTechForSlip(null)} 
+                onClick={() => setSelectedEmployeeForSlip(null)} 
                 className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
@@ -629,8 +654,9 @@ export const PayrollManager: React.FC = () => {
             <div className="space-y-4 text-xs">
               <div className="flex justify-between pb-3 border-b border-white/10">
                 <div>
-                  <p className="font-bold text-white text-sm">{selectedTechForSlip.name}</p>
-                  <p className="text-white/40">{selectedTechForSlip.phone}</p>
+                  <p className="font-bold text-white text-sm">{selectedEmployeeForSlip.name}</p>
+                  <div className="mt-0.5">{getRoleBadge(selectedEmployeeForSlip.role)}</div>
+                  <p className="text-white/40 mt-1">{selectedEmployeeForSlip.phone || selectedEmployeeForSlip.email}</p>
                 </div>
                 <div className="text-right">
                   <p className="font-mono text-white/60">Periode: {selectedMonth}</p>
@@ -641,7 +667,7 @@ export const PayrollManager: React.FC = () => {
               </div>
 
               {(() => {
-                const earnings = getTechnicianMonthlyEarnings(selectedTechForSlip.id, selectedMonth);
+                const earnings = getTechnicianMonthlyEarnings(selectedEmployeeForSlip.id, selectedMonth);
                 return (
                   <div className="space-y-2.5">
                     <div className="flex justify-between py-1 border-b border-white/5">
@@ -650,18 +676,31 @@ export const PayrollManager: React.FC = () => {
                         Rp {(earnings.baseSalary || 0).toLocaleString('id-ID')}
                       </span>
                     </div>
+
+                    {(earnings.positionAllowance || 0) > 0 && (
+                      <div className="flex justify-between py-1 border-b border-white/5">
+                        <span className="text-white/60">Tunjangan Jabatan / Fungsional:</span>
+                        <span className="font-bold text-blue-300 tabular-nums">
+                          Rp {(earnings.positionAllowance || 0).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex justify-between py-1 border-b border-white/5">
                       <span className="text-white/60">Uang Kehadiran GPS ({earnings.attendanceDays} hari hadir):</span>
-                      <span className="font-bold text-white tabular-nums">
+                      <span className="font-bold text-emerald-400 tabular-nums">
                         Rp {(earnings.totalAttendanceAllowance || 0).toLocaleString('id-ID')}
                       </span>
                     </div>
-                    <div className="flex justify-between py-1 border-b border-white/5">
-                      <span className="text-white/60">Total Komisi Pekerjaan ({earnings.completedJobsCount} unit AC):</span>
-                      <span className="font-bold text-amber-400 tabular-nums">
-                        Rp {(earnings.totalCommissions || 0).toLocaleString('id-ID')}
-                      </span>
-                    </div>
+
+                    {earnings.totalCommissions > 0 && (
+                      <div className="flex justify-between py-1 border-b border-white/5">
+                        <span className="text-white/60">Komisi Penugasan Proyek ({earnings.completedJobsCount} unit AC):</span>
+                        <span className="font-bold text-amber-400 tabular-nums">
+                          Rp {(earnings.totalCommissions || 0).toLocaleString('id-ID')}
+                        </span>
+                      </div>
+                    )}
 
                     <div className="flex justify-between py-3 border-t-2 border-white/20 text-sm mt-4">
                       <span className="font-black text-white uppercase">Total Take Home Pay:</span>

@@ -73,14 +73,18 @@ export interface SalaryConfig {
   
   enableAttendanceAllowance: boolean;
   attendanceAllowancePerDay: number; // e.g. 50,000 / day
+
+  enablePositionAllowance?: boolean; // Tunjangan Jabatan / Fungsional (Admin, Super Admin, Lead)
+  positionAllowanceAmount?: number; // e.g. 1,000,000 / month
   
-  enableCommission: boolean;
-  commissionType: 'NOMINAL_PER_SERVICE' | 'PERCENTAGE_OF_ORDER';
-  defaultCommissionPercentage: number; // e.g. 30%
-  serviceCommissions: {
+  // Legacy / optional fallback fields
+  enableCommission?: boolean;
+  commissionType?: 'NOMINAL_PER_SERVICE' | 'PERCENTAGE_OF_ORDER';
+  defaultCommissionPercentage?: number;
+  serviceCommissions?: {
     serviceCategoryId: string;
     serviceCategoryName: string;
-    commissionAmount: number; // e.g. Cuci AC: 25,000, Tambah Freon: 40,000
+    commissionAmount: number;
   }[];
 }
 

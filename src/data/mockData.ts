@@ -264,21 +264,11 @@ export const initialSalaryConfig: SalaryConfig = {
   baseSalaryPeriod: 'BULANAN',
   enableAttendanceAllowance: true,
   attendanceAllowancePerDay: 50000, // Rp 50.000 / hari hadir
-  enableCommission: true,
-  commissionType: 'NOMINAL_PER_SERVICE',
-  defaultCommissionPercentage: 35,
-  serviceCommissions: [
-    { serviceCategoryId: 'srv-1', serviceCategoryName: 'Cuci AC Split (0.5 - 1 PK)', commissionAmount: 25000 },
-    { serviceCategoryId: 'srv-2', serviceCategoryName: 'Cuci AC Split (1.5 - 2 PK)', commissionAmount: 30000 },
-    { serviceCategoryId: 'srv-3', serviceCategoryName: 'Cuci AC Cassette / Ceiling', commissionAmount: 60000 },
-    { serviceCategoryId: 'srv-4', serviceCategoryName: 'Tambah Freon R32 / R410A', commissionAmount: 40000 },
-    { serviceCategoryId: 'srv-5', serviceCategoryName: 'Isi Penuh Freon Total', commissionAmount: 75000 },
-    { serviceCategoryId: 'srv-6', serviceCategoryName: 'Perbaikan Bocor Air / Drainase', commissionAmount: 30000 },
-    { serviceCategoryId: 'srv-7', serviceCategoryName: 'Ganti Kapasitor Kompresor', commissionAmount: 45000 },
-    { serviceCategoryId: 'srv-8', serviceCategoryName: 'Ganti Motor Fan Indoor/Outdoor', commissionAmount: 50000 },
-    { serviceCategoryId: 'srv-9', serviceCategoryName: 'Bongkar Pasang AC Split', commissionAmount: 120000 },
-    { serviceCategoryId: 'srv-10', serviceCategoryName: 'Maintenance Kontrak Kantor (4-8 Unit)', commissionAmount: 160000 },
-  ],
+  enablePositionAllowance: true,
+  positionAllowanceAmount: 750000, // Rp 750.000 / bulan
+  enableCommission: false,
+  commissionType: 'PERCENTAGE_OF_ORDER',
+  defaultCommissionPercentage: 25,
 };
 
 export const serviceCategories: ServiceCategory[] = [

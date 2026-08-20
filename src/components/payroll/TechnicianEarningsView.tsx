@@ -138,14 +138,11 @@ export const TechnicianEarningsView: React.FC = () => {
           </div>
 
           <div className="p-4 bg-black/20 rounded-2xl border border-white/10">
-            <span className="text-blue-100 block text-[10px] uppercase font-bold mb-1">3. Komisi Pengerjaan</span>
+            <span className="text-blue-100 block text-[10px] uppercase font-bold mb-1">3. Komisi Penugasan Proyek</span>
             <span className="text-base font-black text-amber-300">
-              {config?.enableCommission
-                ? config.commissionType === 'PERCENTAGE_OF_ORDER'
-                  ? `${config.defaultCommissionPercentage}% Nilai Jasa Servis`
-                  : 'Nominal Tetap per Kategori Unit'
-                : 'Tidak Aktif'}
+              Sesuai Porsi Per Proyek
             </span>
+            <span className="text-[10px] text-white/60 block mt-0.5">Ditetapkan pada setiap penugasan order</span>
           </div>
         </div>
       </div>
