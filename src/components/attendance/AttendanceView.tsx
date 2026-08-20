@@ -24,6 +24,7 @@ import {
   Navigation
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { compressImage } from '../../utils/imageCompressor';
 
 export const AttendanceView: React.FC = () => {
   const { 
@@ -66,6 +67,7 @@ export const AttendanceView: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const nativeCameraInputRef = useRef<HTMLInputElement>(null);
 
   // Super Admin states
   const [showAddManualModal, setShowAddManualModal] = useState(false);
@@ -119,32 +121,65 @@ export const AttendanceView: React.FC = () => {
 
   const startCamera = async () => {
     setCameraError('');
+    setIsCameraActive(false);
     try {
       stopCamera();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 640 }, facingMode: 'user' },
-        audio: false
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        setCameraError('Live kamera browser tidak didukung atau izin dibatasi. Silakan gunakan tombol Kamera HP.');
+        return;
+      }
+
+      const constraintList: MediaStreamConstraints[] = [
+        {
+          video: { width: { ideal: 640 }, height: { ideal: 640 }, facingMode: { ideal: 'user' } },
+          audio: false
+        },
+        {
+          video: { facingMode: 'user' },
+          audio: false
+        },
+        {
+          video: true,
+          audio: false
+        }
+      ];
+
+      let acquiredStream: MediaStream | null = null;
+      for (const constraints of constraintList) {
         try {
-          const playPromise = videoRef.current.play();
-          if (playPromise !== undefined) {
-            playPromise.catch((err: any) => {
-              if (err.name !== 'AbortError') {
-                console.warn('Attendance camera play issue:', err);
-              }
-            });
-          }
-        } catch (playErr) {
-          // Ignore synchronous aborts
+          acquiredStream = await navigator.mediaDevices.getUserMedia(constraints);
+          if (acquiredStream) break;
+        } catch (e) {
+          // try next constraint
         }
       }
-      setIsCameraActive(true);
+
+      if (acquiredStream) {
+        streamRef.current = acquiredStream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = acquiredStream;
+          try {
+            const playPromise = videoRef.current.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((err: any) => {
+                if (err.name !== 'AbortError') {
+                  console.warn('Attendance camera play issue:', err);
+                }
+              });
+            }
+          } catch (playErr) {
+            // Ignore synchronous aborts
+          }
+        }
+        setIsCameraActive(true);
+      } else {
+        setCameraError('Akses kamera tidak diizinkan atau tidak didukung di peramban ini. Silakan gunakan tombol Kamera HP atau Ambil File.');
+        setIsCameraActive(false);
+      }
     } catch (err: any) {
       console.warn('Camera access error:', err);
-      setCameraError('Akses kamera tidak diizinkan atau tidak didukung di peramban ini. Silakan gunakan opsi Ambil File Gambar / Foto.');
+      setCameraError('Akses kamera tidak diizinkan atau tidak didukung di peramban ini. Silakan gunakan tombol Kamera HP atau Ambil File.');
       setIsCameraActive(false);
     }
   };
@@ -161,7 +196,7 @@ export const AttendanceView: React.FC = () => {
     setIsCameraActive(false);
   };
 
-  const handleCaptureSelfie = () => {
+  const handleCaptureSelfie = async () => {
     if (!videoRef.current) return;
     const canvas = document.createElement('canvas');
     canvas.width = 480;
@@ -176,22 +211,25 @@ export const AttendanceView: React.FC = () => {
     ctx.drawImage(vid, startX, startY, size, size, 0, 0, 480, 480);
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    setSelfiePhoto(dataUrl);
+    const compressed = await compressImage(dataUrl, 500, 500, 0.7);
+    setSelfiePhoto(compressed);
     stopCamera();
   };
 
-  const handleSelfieFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSelfieFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setSelfiePhoto(result);
+    try {
+      const compressed = await compressImage(file, 500, 500, 0.7);
+      if (compressed) {
+        setSelfiePhoto(compressed);
         stopCamera();
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Selfie upload error:', err);
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const openAttendanceModal = (type: 'CLOCK_IN' | 'CLOCK_OUT') => {
@@ -563,24 +601,44 @@ export const AttendanceView: React.FC = () => {
                     </div>
                   )}
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={handleCaptureSelfie}
-                      className="flex-1 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-cyan-500/30 cursor-pointer"
+                      onClick={() => nativeCameraInputRef.current?.click()}
+                      className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-lg shadow-blue-600/30 cursor-pointer"
                     >
                       <Camera className="w-4 h-4" />
-                      <span>Ambil Selfie Sekarang</span>
+                      <span>Kamera HP</span>
                     </button>
+
+                    {isCameraActive && (
+                      <button
+                        type="button"
+                        onClick={handleCaptureSelfie}
+                        className="flex-1 py-2.5 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black rounded-xl text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 shadow-lg shadow-cyan-500/30 cursor-pointer"
+                      >
+                        <Camera className="w-4 h-4" />
+                        <span>Jepret Live</span>
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      className="px-3.5 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                     >
                       <Upload className="w-3.5 h-3.5" />
-                      <span>Upload</span>
+                      <span>File</span>
                     </button>
                   </div>
+                  <input
+                    type="file"
+                    ref={nativeCameraInputRef}
+                    onChange={handleSelfieFileUpload}
+                    accept="image/*"
+                    capture="user"
+                    className="hidden"
+                  />
                   <input
                     type="file"
                     ref={fileInputRef}

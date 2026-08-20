@@ -3,6 +3,7 @@
   "description": "Imported from GitHub: adrian721/cc",
   "requestFramePermissions": [
     "camera",
+    "microphone",
     "geolocation"
   ],
   "majorCapabilities": [

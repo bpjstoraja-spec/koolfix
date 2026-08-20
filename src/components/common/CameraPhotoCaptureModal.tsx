@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Camera, RefreshCw, X, Check, Image as ImageIcon, FlipHorizontal, AlertCircle } from 'lucide-react';
+import { Camera, RefreshCw, X, Check, Image as ImageIcon, FlipHorizontal, AlertCircle, Smartphone } from 'lucide-react';
 import { compressImage } from '../../utils/imageCompressor';
 
 interface CameraPhotoCaptureModalProps {
@@ -25,6 +25,7 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const nativeCameraInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -56,25 +57,53 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
     setIsCameraActive(false);
     stopCamera();
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setCameraError('Fitur live kamera browser tidak didukung atau dibatasi. Silakan gunakan tombol "Kamera Bawaan HP" di bawah.');
+      return;
+    }
+
+    // Try progressive constraints
+    const constraintList: MediaStreamConstraints[] = [
+      {
         video: {
           facingMode: { ideal: facingMode },
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },
         audio: false,
-      });
+      },
+      {
+        video: {
+          facingMode: facingMode,
+        },
+        audio: false,
+      },
+      {
+        video: true,
+        audio: false,
+      },
+    ];
 
-      streamRef.current = stream;
+    let acquiredStream: MediaStream | null = null;
+    for (const constraints of constraintList) {
+      try {
+        acquiredStream = await navigator.mediaDevices.getUserMedia(constraints);
+        if (acquiredStream) break;
+      } catch (e) {
+        // try next constraint
+      }
+    }
+
+    if (acquiredStream) {
+      streamRef.current = acquiredStream;
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        videoRef.current.srcObject = acquiredStream;
         try {
           const playPromise = videoRef.current.play();
           if (playPromise !== undefined) {
             playPromise.catch((err: any) => {
               if (err.name !== 'AbortError') {
-                console.warn('Camera video play error:', err);
+                console.warn('Camera video play warning:', err);
               }
             });
           }
@@ -83,9 +112,8 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
         }
       }
       setIsCameraActive(true);
-    } catch (err: any) {
-      console.warn('Camera stream failed:', err);
-      setCameraError('Kamera tidak dapat diakses atau izin belum diberikan pada browser. Anda tetap dapat memilih foto dari galeri/file.');
+    } else {
+      setCameraError('Izin akses kamera belum diizinkan atau kamera sedang digunakan aplikasi lain. Gunakan tombol "Kamera Bawaan HP" untuk membuka kamera langsung.');
       setIsCameraActive(false);
     }
   };
@@ -103,8 +131,8 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const rawData = canvas.toDataURL('image/jpeg', 0.9);
-        const compressed = await compressImage(rawData, 900, 900, 0.75);
+        const rawData = canvas.toDataURL('image/jpeg', 0.85);
+        const compressed = await compressImage(rawData, 720, 720, 0.65);
         setCapturedPhoto(compressed);
         stopCamera();
       }
@@ -131,19 +159,22 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
     setCapturedPhoto(null);
   };
 
-  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handles both Native Camera capture and Gallery file uploads
+  const handleProcessFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsProcessing(true);
     try {
-      const compressed = await compressImage(file, 900, 900, 0.75);
+      const compressed = await compressImage(file, 720, 720, 0.65);
       setCapturedPhoto(compressed);
       stopCamera();
     } catch (err) {
       console.error('File compression failed:', err);
     } finally {
       setIsProcessing(false);
+      // Reset input value so same file can be re-selected if needed
+      e.target.value = '';
     }
   };
 
@@ -152,6 +183,23 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-200">
       <div className="relative w-full max-w-lg bg-[#141414] border border-white/15 rounded-3xl overflow-hidden shadow-2xl text-white flex flex-col">
+        {/* Hidden inputs for native camera and gallery */}
+        <input
+          type="file"
+          ref={nativeCameraInputRef}
+          accept="image/*"
+          capture="environment"
+          onChange={handleProcessFile}
+          className="hidden"
+        />
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="image/*"
+          onChange={handleProcessFile}
+          className="hidden"
+        />
+
         {/* Header */}
         <div className="flex items-center justify-between p-4 px-5 border-b border-white/10 bg-white/5">
           <div className="flex items-center gap-2.5">
@@ -164,6 +212,7 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
             </div>
           </div>
           <button
+            type="button"
             onClick={() => {
               setCapturedPhoto(null);
               onClose();
@@ -175,17 +224,17 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
         </div>
 
         {/* Viewport Area */}
-        <div className="relative bg-black flex items-center justify-center min-h-[320px] max-h-[420px] overflow-hidden">
+        <div className="relative bg-black flex items-center justify-center min-h-[300px] max-h-[380px] overflow-hidden">
           {capturedPhoto ? (
-            <div className="relative w-full h-full flex items-center justify-center">
+            <div className="relative w-full h-full flex items-center justify-center p-2">
               <img
                 src={capturedPhoto}
                 alt="Captured Snapshot"
-                className="max-h-[380px] w-full object-contain"
+                className="max-h-[340px] w-full object-contain rounded-xl"
               />
-              <div className="absolute top-3 left-3 bg-black/70 px-2.5 py-1 rounded-full text-[10px] font-black text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+              <div className="absolute top-4 left-4 bg-black/80 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] font-black text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
                 <Check className="w-3.5 h-3.5" />
-                Foto Berhasil Ditangkap (Tersaring & Kompres)
+                Foto Siap Disinkronkan ke Cloud
               </div>
             </div>
           ) : isCameraActive ? (
@@ -195,7 +244,7 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
                 autoPlay
                 playsInline
                 muted
-                className="w-full h-[360px] object-cover"
+                className="w-full h-[340px] object-cover"
               />
               {/* Overlay Crosshair */}
               <div className="absolute inset-0 pointer-events-none flex items-center justify-center">
@@ -213,24 +262,39 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
               </button>
             </div>
           ) : (
-            <div className="p-8 text-center space-y-3">
+            <div className="p-6 text-center space-y-4 max-w-sm mx-auto">
               {cameraError ? (
-                <div className="p-4 bg-amber-950/40 border border-amber-500/30 rounded-2xl text-xs text-amber-200 space-y-2 max-w-sm mx-auto">
+                <div className="p-4 bg-amber-950/40 border border-amber-500/30 rounded-2xl text-xs text-amber-200 space-y-2">
                   <AlertCircle className="w-6 h-6 text-amber-400 mx-auto" />
-                  <p>{cameraError}</p>
+                  <p className="font-semibold">{cameraError}</p>
                 </div>
               ) : (
-                <div className="text-white/60 text-xs flex flex-col items-center gap-2">
+                <div className="text-white/60 text-xs flex flex-col items-center gap-2 py-4">
                   <RefreshCw className="w-6 h-6 animate-spin text-blue-400" />
-                  <span>Membuka kamera...</span>
+                  <span>Menghubungkan ke kamera...</span>
                 </div>
               )}
+
+              {/* Direct Native Camera Trigger */}
+              <div className="space-y-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => nativeCameraInputRef.current?.click()}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white font-black text-xs uppercase tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-600/30 cursor-pointer"
+                >
+                  <Smartphone className="w-4 h-4" />
+                  Buka Kamera HP Langsung
+                </button>
+                <p className="text-[10px] text-white/40">
+                  Membuka aplikasi kamera bawaan smartphone dengan kualitas penuh.
+                </p>
+              </div>
             </div>
           )}
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 px-5 bg-white/5 border-t border-white/10 flex items-center justify-between gap-3">
+        <div className="p-4 px-5 bg-white/5 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
           {capturedPhoto ? (
             <>
               <button
@@ -252,14 +316,19 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
             </>
           ) : (
             <>
-              <div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
+              <div className="flex items-center gap-2">
+                {/* 1. Native Camera HP Shutter Button */}
+                <button
+                  type="button"
+                  onClick={() => nativeCameraInputRef.current?.click()}
+                  className="px-3.5 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                  title="Jepret langsung menggunakan aplikasi kamera HP"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  Kamera HP
+                </button>
+
+                {/* 2. File picker gallery */}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
@@ -278,7 +347,7 @@ export const CameraPhotoCaptureModal: React.FC<CameraPhotoCaptureModalProps> = (
                   className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition flex items-center gap-2 shadow-lg shadow-blue-600/40 cursor-pointer disabled:opacity-50"
                 >
                   <Camera className="w-4 h-4" />
-                  {isProcessing ? 'Memproses...' : 'Ambil Foto'}
+                  {isProcessing ? 'Memproses...' : 'Jepret Live'}
                 </button>
               )}
             </>

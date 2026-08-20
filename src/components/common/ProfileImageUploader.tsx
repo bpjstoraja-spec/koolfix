@@ -9,6 +9,7 @@ import {
   X,
   UserCheck
 } from 'lucide-react';
+import { compressImage } from '../../utils/imageCompressor';
 
 interface ProfileImageUploaderProps {
   currentAvatar: string;
@@ -75,29 +76,62 @@ export const ProfileImageUploader: React.FC<ProfileImageUploaderProps> = ({
 
   const startCamera = async () => {
     setCameraError('');
+    setIsCameraActive(false);
     try {
       stopCamera();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 640 }, facingMode: 'user' },
-        audio: false
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+
+      if (!navigator?.mediaDevices?.getUserMedia) {
+        setCameraError('Kamera browser tidak didukung atau dibatasi. Silakan gunakan opsi Upload File.');
+        return;
+      }
+
+      const constraintList: MediaStreamConstraints[] = [
+        {
+          video: { width: { ideal: 640 }, height: { ideal: 640 }, facingMode: { ideal: 'user' } },
+          audio: false
+        },
+        {
+          video: { facingMode: 'user' },
+          audio: false
+        },
+        {
+          video: true,
+          audio: false
+        }
+      ];
+
+      let acquiredStream: MediaStream | null = null;
+      for (const constraints of constraintList) {
         try {
-          const playPromise = videoRef.current.play();
-          if (playPromise !== undefined) {
-            playPromise.catch((err: any) => {
-              if (err.name !== 'AbortError') {
-                console.warn('Camera video play issue:', err);
-              }
-            });
-          }
-        } catch (playErr) {
-          // Ignore synchronous aborts
+          acquiredStream = await navigator.mediaDevices.getUserMedia(constraints);
+          if (acquiredStream) break;
+        } catch (e) {
+          // try next
         }
       }
-      setIsCameraActive(true);
+
+      if (acquiredStream) {
+        streamRef.current = acquiredStream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = acquiredStream;
+          try {
+            const playPromise = videoRef.current.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((err: any) => {
+                if (err.name !== 'AbortError') {
+                  console.warn('Camera video play issue:', err);
+                }
+              });
+            }
+          } catch (playErr) {
+            // Ignore synchronous aborts
+          }
+        }
+        setIsCameraActive(true);
+      } else {
+        setCameraError('Kamera tidak dapat diakses atau izin belum diberikan. Silakan gunakan opsi Upload File.');
+        setIsCameraActive(false);
+      }
     } catch (err: any) {
       console.warn('Camera access error:', err);
       setCameraError('Kamera tidak dapat diakses atau izin ditolak. Silakan gunakan opsi Upload File.');
@@ -105,7 +139,7 @@ export const ProfileImageUploader: React.FC<ProfileImageUploaderProps> = ({
     }
   };
 
-  const handleCaptureCamera = () => {
+  const handleCaptureCamera = async () => {
     if (!videoRef.current) return;
     const canvas = document.createElement('canvas');
     canvas.width = 400;
@@ -121,29 +155,27 @@ export const ProfileImageUploader: React.FC<ProfileImageUploaderProps> = ({
     ctx.drawImage(vid, startX, startY, size, size, 0, 0, 400, 400);
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-    setPreviewUrl(dataUrl);
-    onAvatarChange(dataUrl);
+    const compressed = await compressImage(dataUrl, 400, 400, 0.7);
+    setPreviewUrl(compressed);
+    onAvatarChange(compressed);
     stopCamera();
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!file.type.startsWith('image/')) {
-      alert('Harap pilih file gambar (JPG, PNG, WebP).');
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
-      if (result) {
-        setPreviewUrl(result);
-        onAvatarChange(result);
+    try {
+      const compressed = await compressImage(file, 400, 400, 0.7);
+      if (compressed) {
+        setPreviewUrl(compressed);
+        onAvatarChange(compressed);
       }
-    };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      console.error('Avatar file upload error:', err);
+    } finally {
+      e.target.value = '';
+    }
   };
 
   const handleSelectPreset = (url: string) => {
