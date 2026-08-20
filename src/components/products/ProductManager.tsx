@@ -66,7 +66,6 @@ export const ProductManager: React.FC = () => {
     name: '',
     description: '',
     basePrice: 0,
-    technicianCommissionPercent: 30,
     warrantyDays: 30,
     isActive: true,
   });
@@ -112,7 +111,6 @@ export const ProductManager: React.FC = () => {
       name: '',
       description: '',
       basePrice: 75000,
-      technicianCommissionPercent: 30,
       warrantyDays: 30,
       isActive: true,
     });
@@ -125,7 +123,6 @@ export const ProductManager: React.FC = () => {
       name: service.name,
       description: service.description || '',
       basePrice: service.basePrice,
-      technicianCommissionPercent: service.technicianCommissionPercent || 30,
       warrantyDays: service.warrantyDays || 30,
       isActive: service.isActive !== false,
     });
@@ -147,7 +144,6 @@ export const ProductManager: React.FC = () => {
         name: serviceFormData.name!,
         description: serviceFormData.description || '',
         basePrice: serviceFormData.basePrice || 0,
-        technicianCommissionPercent: serviceFormData.technicianCommissionPercent || 30,
         warrantyDays: serviceFormData.warrantyDays || 30,
         isActive: serviceFormData.isActive !== false,
       });
@@ -557,9 +553,9 @@ export const ProductManager: React.FC = () => {
                     </span>
                   </div>
                   <div className="text-right">
-                    <span className="text-[10px] uppercase font-bold text-white/40 block">Alokasi Komisi Teknisi</span>
-                    <span className="text-xs font-bold text-emerald-400">
-                      {service.technicianCommissionPercent || 30}% (Rp {Math.round(service.basePrice * ((service.technicianCommissionPercent || 30) / 100)).toLocaleString('id-ID')})
+                    <span className="text-[10px] uppercase font-bold text-white/40 block">Garansi Layanan</span>
+                    <span className="text-xs font-bold text-cyan-400">
+                      {service.warrantyDays || 30} Hari
                     </span>
                   </div>
                 </div>
@@ -1054,20 +1050,6 @@ export const ProductManager: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black uppercase text-white/50 mb-1">Komisi Teknisi (%)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={serviceFormData.technicianCommissionPercent ?? 30}
-                    onChange={(e) => setServiceFormData({ ...serviceFormData, technicianCommissionPercent: parseInt(e.target.value) || 0 })}
-                    className="w-full p-2.5 bg-white/5 border border-white/10 rounded-xl text-emerald-400 font-mono font-bold focus:outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
                   <label className="block text-[10px] font-black uppercase text-white/50 mb-1">Garansi Pekerjaan (Hari)</label>
                   <input
                     type="number"
@@ -1077,18 +1059,18 @@ export const ProductManager: React.FC = () => {
                     className="w-full p-2.5 bg-white/5 border border-white/10 rounded-xl text-white font-mono font-bold focus:outline-none focus:border-blue-500"
                   />
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-[10px] font-black uppercase text-white/50 mb-1">Status Publikasi</label>
-                  <select
-                    value={serviceFormData.isActive ? 'true' : 'false'}
-                    onChange={(e) => setServiceFormData({ ...serviceFormData, isActive: e.target.value === 'true' })}
-                    className="w-full p-2.5 bg-slate-900 border border-white/10 rounded-xl text-white font-bold focus:outline-none"
-                  >
-                    <option value="true">Aktif (Tersedia)</option>
-                    <option value="false">Non-Aktif (Diarsipkan)</option>
-                  </select>
-                </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase text-white/50 mb-1">Status Publikasi</label>
+                <select
+                  value={serviceFormData.isActive ? 'true' : 'false'}
+                  onChange={(e) => setServiceFormData({ ...serviceFormData, isActive: e.target.value === 'true' })}
+                  className="w-full p-2.5 bg-slate-900 border border-white/10 rounded-xl text-white font-bold focus:outline-none"
+                >
+                  <option value="true">Aktif (Tersedia)</option>
+                  <option value="false">Non-Aktif (Diarsipkan)</option>
+                </select>
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t border-white/10">

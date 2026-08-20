@@ -6,22 +6,16 @@ import {
   MapPin, 
   Clock, 
   Camera, 
-  Calendar, 
-  Compass, 
   RefreshCw,
-  Sparkles,
-  Plus,
   Trash2,
   Crown,
   AlertTriangle,
   X,
-  Save,
   CheckCircle2,
-  AlertOctagon,
   ShieldCheck,
   Upload,
-  Info,
-  Navigation
+  User,
+  Shield
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { compressImage } from '../../utils/imageCompressor';
@@ -33,13 +27,11 @@ export const AttendanceView: React.FC = () => {
     attendanceRecords, 
     clockIn, 
     clockOut, 
-    addAttendanceRecord,
     deleteAttendanceRecord,
     showNotification 
   } = useApp();
 
   const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
-  const isTechnician = currentUser.role === 'TEKNISI';
   const todayStr = new Date().toISOString().split('T')[0];
 
   const todayAttendance = attendanceRecords.find(
@@ -52,7 +44,6 @@ export const AttendanceView: React.FC = () => {
     lng: 106.8456,
     accuracy: 8,
   });
-  const [address, setAddress] = useState('Jl. Jend. Sudirman No. 45, Jakarta Selatan');
   const [isGettingLocation, setIsGettingLocation] = useState(false);
 
   // Verification & Submission Modal State
@@ -62,26 +53,14 @@ export const AttendanceView: React.FC = () => {
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [isLocationAgreed, setIsLocationAgreed] = useState(false);
-  const [customStreetName, setCustomStreetName] = useState('');
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const nativeCameraInputRef = useRef<HTMLInputElement>(null);
 
-  // Super Admin states
-  const [showAddManualModal, setShowAddManualModal] = useState(false);
+  // Super Admin delete modal state
   const [recordToDelete, setRecordToDelete] = useState<AttendanceRecord | null>(null);
-
-  // Manual Add Form States
-  const [selectedTechId, setSelectedTechId] = useState(users.find(u => u.role === 'TEKNISI')?.id || '');
-  const [manualDate, setManualDate] = useState(todayStr);
-  const [manualClockIn, setManualClockIn] = useState('08:00');
-  const [manualClockOut, setManualClockOut] = useState('17:00');
-  const [manualAddress, setManualAddress] = useState('Kantor Pusat Operasional KoolFix');
-  const [manualAllowance, setManualAllowance] = useState(50000);
-
-  const techniciansList = users.filter(u => u.role === 'TEKNISI');
 
   // Live digital clock
   useEffect(() => {
@@ -89,7 +68,7 @@ export const AttendanceView: React.FC = () => {
     return () => clearInterval(timer);
   }, []);
 
-  // Request actual geolocation if supported
+  // Request actual geolocation coordinates
   const fetchLiveGPS = () => {
     if (navigator.geolocation) {
       setIsGettingLocation(true);
@@ -103,15 +82,11 @@ export const AttendanceView: React.FC = () => {
             lng,
             accuracy: acc,
           });
-          const detectedAddress = `Jl. Koordinat Presensi (${lat.toFixed(5)}, ${lng.toFixed(5)})`;
-          setAddress(detectedAddress);
-          setCustomStreetName(detectedAddress);
           setIsGettingLocation(false);
-          showNotification('Lokasi GPS & Geotag berhasil diperbarui!', 'success');
+          showNotification('Koordinat GPS berhasil diperbarui!', 'success');
         },
         () => {
           setIsGettingLocation(false);
-          setCustomStreetName(address);
           showNotification('Menggunakan koordinat stasiun operasional KoolFix', 'info');
         },
         { enableHighAccuracy: true, timeout: 6000 }
@@ -234,12 +209,9 @@ export const AttendanceView: React.FC = () => {
 
   const openAttendanceModal = (type: 'CLOCK_IN' | 'CLOCK_OUT') => {
     setConfirmActionType(type);
-    setCustomStreetName(address);
     setIsLocationAgreed(false);
-    // Use technician avatar as initial fallback photo or empty so they must take a selfie
     setSelfiePhoto('');
     setShowConfirmModal(true);
-    // Auto trigger GPS refresh and camera start
     fetchLiveGPS();
     setTimeout(() => {
       startCamera();
@@ -253,15 +225,15 @@ export const AttendanceView: React.FC = () => {
 
   const handleSubmitAttendanceRecord = () => {
     if (!selfiePhoto) {
-      showNotification('Harap ambil foto selfie terlebih dahulu sebagai bukti kehadiran lapangan!', 'error');
+      showNotification('Harap ambil foto selfie terlebih dahulu sebagai bukti kehadiran!', 'error');
       return;
     }
     if (!isLocationAgreed) {
-      showNotification('Harap centang persetujuan validasi lokasi & koordinat sebelum mengirim!', 'warning');
+      showNotification('Harap centang persetujuan validasi koordinat GPS sebelum mengirim!', 'warning');
       return;
     }
 
-    const finalAddress = customStreetName.trim() || address;
+    const coordStr = `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`;
 
     if (confirmActionType === 'CLOCK_IN') {
       clockIn(
@@ -269,7 +241,7 @@ export const AttendanceView: React.FC = () => {
         {
           latitude: coords.lat,
           longitude: coords.lng,
-          addressName: finalAddress,
+          addressName: coordStr,
           accuracyMeters: coords.accuracy,
         },
         selfiePhoto
@@ -288,12 +260,25 @@ export const AttendanceView: React.FC = () => {
       clockOut(currentUser.id, {
         latitude: coords.lat,
         longitude: coords.lng,
-        addressName: finalAddress,
+        addressName: coordStr,
         accuracyMeters: coords.accuracy,
       });
     }
 
     handleCloseConfirmModal();
+  };
+
+  const getRoleBadge = (role?: string) => {
+    switch (role) {
+      case 'SUPER_ADMIN':
+        return <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30">Super Admin</span>;
+      case 'ADMIN':
+        return <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-purple-500/20 text-purple-300 border border-purple-500/30">Admin</span>;
+      case 'TEKNISI':
+        return <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Teknisi</span>;
+      default:
+        return <span className="px-2 py-0.5 rounded-md text-[9px] font-black uppercase bg-white/10 text-white/70">Anggota</span>;
+    }
   };
 
   return (
@@ -302,7 +287,7 @@ export const AttendanceView: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-2 border-b border-white/10">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-cyan-400 font-bold mb-1">
-            Real-time GPS & Field Verification
+            Real-time GPS & Geotag Verification
           </p>
           <h2 className="text-4xl sm:text-5xl font-black tracking-tighter leading-none text-white">
             ABSENSI GEOTAG
@@ -319,136 +304,129 @@ export const AttendanceView: React.FC = () => {
         </button>
       </div>
 
-      {/* Technician Clock In / Out Panel */}
-      {isTechnician && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Big Digital Clock Card */}
-          <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 flex flex-col justify-between space-y-6">
-            <div>
-              <div className="flex items-center justify-between mb-4">
+      {/* Attendance Panel for Every Team Member (Super Admin, Admin, and Teknisi) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Big Digital Clock Card */}
+        <div className="lg:col-span-2 bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 flex flex-col justify-between space-y-6">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase tracking-[0.2em] text-white/40 font-bold">
-                  Waktu Presensi Server
+                  Presensi: {currentUser.name}
                 </span>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                  GPS Live Active
-                </span>
+                {getRoleBadge(currentUser.role)}
               </div>
-
-              <div className="text-5xl sm:text-7xl font-black tracking-tighter tabular-nums text-white my-4">
-                {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                <span className="text-xl sm:text-2xl font-bold text-white/40 ml-2">WIB</span>
-              </div>
-
-              <p className="text-xs text-white/60 font-bold">
-                {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-              </p>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                GPS Live Active
+              </span>
             </div>
 
-            {/* Geotag & Accuracy info */}
-            <div className="p-4 bg-black/40 rounded-2xl border border-white/5 space-y-2 text-xs">
-              <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                <div>
-                  <p className="font-bold text-white">{address}</p>
-                  <p className="text-white/40 text-[10px] font-mono">
-                    Koordinat: {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)} (Radius Akurasi: ±{coords.accuracy}m)
-                  </p>
-                </div>
-              </div>
+            <div className="text-5xl sm:text-7xl font-black tracking-tighter tabular-nums text-white my-4">
+              {currentTime.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              <span className="text-xl sm:text-2xl font-bold text-white/40 ml-2">WIB</span>
             </div>
 
-            {/* Action buttons */}
-            <div className="pt-2 flex flex-col sm:flex-row gap-3">
-              {!todayAttendance ? (
-                <button
-                  onClick={() => openAttendanceModal('CLOCK_IN')}
-                  className="flex-1 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black rounded-2xl text-sm uppercase tracking-wider shadow-lg shadow-cyan-500/30 transition cursor-pointer flex items-center justify-center gap-2"
-                >
-                  <Camera className="w-5 h-5" />
-                  <span>Clock In Masuk (Selfie + Validasi GPS)</span>
-                </button>
-              ) : !todayAttendance.clockOutTime ? (
-                <div className="flex-1 flex flex-col sm:flex-row gap-3">
-                  <div className="flex-1 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] text-emerald-400 font-bold block uppercase">Jam Masuk Hari Ini</span>
-                      <span className="text-lg font-black text-white">{todayAttendance.clockInTime} WIB</span>
-                    </div>
-                    <span className="text-xs font-black text-emerald-400 bg-emerald-500/20 px-2.5 py-1 rounded-lg">
-                      AKTIF BERTUGAS
-                    </span>
-                  </div>
+            <p className="text-xs text-white/60 font-bold">
+              {currentTime.toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </p>
+          </div>
 
-                  <button
-                    onClick={() => openAttendanceModal('CLOCK_OUT')}
-                    className="py-3 px-6 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-lg shadow-red-600/30 flex items-center justify-center gap-2"
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>Clock Out Pulang</span>
-                  </button>
-                </div>
-              ) : (
-                <div className="w-full p-4 bg-white/10 rounded-2xl border border-white/10 text-center">
-                  <p className="text-xs font-black text-emerald-400 uppercase tracking-wider">
-                    ✓ Presensi Selesai ({todayAttendance.clockInTime} - {todayAttendance.clockOutTime} WIB)
-                  </p>
-                  <p className="text-[11px] text-white/60 mt-0.5">Uang kehadiran hari ini otomatis masuk ke slip gaji & komisi.</p>
-                </div>
-              )}
+          {/* Geotag & Accuracy info - Coordinates only */}
+          <div className="p-4 bg-black/40 rounded-2xl border border-white/5 space-y-2 text-xs">
+            <div className="flex items-start gap-2">
+              <MapPin className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-mono font-bold text-cyan-300 text-sm">
+                  Lat: {coords.lat.toFixed(6)}, Lng: {coords.lng.toFixed(6)}
+                </p>
+                <p className="text-white/40 text-[10px] font-mono mt-0.5">
+                  Radius Akurasi GPS: ±{coords.accuracy} Meter
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Selfie Preview & Rule Card */}
-          <div className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col justify-between space-y-4">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-wider text-white/40 block mb-2">
-                Verifikasi Foto Lapangan Terakhir
-              </span>
-              <div className="relative rounded-2xl overflow-hidden aspect-video border border-white/10 bg-black">
-                <img
-                  src={todayAttendance?.clockInPhoto || currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80'}
-                  alt="Selfie Presensi"
-                  className="w-full h-full object-cover"
-                />
-                <div className="absolute bottom-2 left-2 px-2.5 py-1 bg-black/80 backdrop-blur-md rounded-lg text-[10px] font-mono text-cyan-300">
-                  📍 Verified Geotag
+          {/* Action buttons */}
+          <div className="pt-2 flex flex-col sm:flex-row gap-3">
+            {!todayAttendance ? (
+              <button
+                onClick={() => openAttendanceModal('CLOCK_IN')}
+                className="flex-1 py-4 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black rounded-2xl text-sm uppercase tracking-wider shadow-lg shadow-cyan-500/30 transition cursor-pointer flex items-center justify-center gap-2"
+              >
+                <Camera className="w-5 h-5" />
+                <span>Clock In Masuk (Selfie + Koordinat GPS)</span>
+              </button>
+            ) : !todayAttendance.clockOutTime ? (
+              <div className="flex-1 flex flex-col sm:flex-row gap-3">
+                <div className="flex-1 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-emerald-400 font-bold block uppercase">Jam Masuk Hari Ini</span>
+                    <span className="text-lg font-black text-white">{todayAttendance.clockInTime} WIB</span>
+                  </div>
+                  <span className="text-xs font-black text-emerald-400 bg-emerald-500/20 px-2.5 py-1 rounded-lg">
+                    AKTIF BERTUGAS
+                  </span>
                 </div>
-              </div>
-            </div>
 
-            <div className="space-y-2 text-xs text-white/60">
-              <p className="font-bold text-white flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                Ketentuan Wajib Presensi:
-              </p>
-              <ul className="list-disc list-inside space-y-1 text-[11px]">
-                <li>Wajib mengambil <strong>foto selfie langsung</strong> di lokasi tugas.</li>
-                <li>Koordinat dan nama jalan akan ditampilkan untuk konfirmasi sebelum pengiriman.</li>
-                <li>Uang kehadiran otomatis dihitung ke slip gaji bulanan teknisi.</li>
-              </ul>
-            </div>
+                <button
+                  onClick={() => openAttendanceModal('CLOCK_OUT')}
+                  className="py-3 px-6 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-lg shadow-red-600/30 flex items-center justify-center gap-2"
+                >
+                  <Clock className="w-4 h-4" />
+                  <span>Clock Out Pulang</span>
+                </button>
+              </div>
+            ) : (
+              <div className="w-full p-4 bg-white/10 rounded-2xl border border-white/10 text-center">
+                <p className="text-xs font-black text-emerald-400 uppercase tracking-wider">
+                  ✓ Presensi Selesai ({todayAttendance.clockInTime} - {todayAttendance.clockOutTime} WIB)
+                </p>
+                <p className="text-[11px] text-white/60 mt-0.5">Kehadiran hari ini tercatat dan tersinkron ke cloud.</p>
+              </div>
+            )}
           </div>
         </div>
-      )}
+
+        {/* Selfie Preview & Rule Card */}
+        <div className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col justify-between space-y-4">
+          <div>
+            <span className="text-[10px] font-black uppercase tracking-wider text-white/40 block mb-2">
+              Verifikasi Foto Presensi Terakhir
+            </span>
+            <div className="relative rounded-2xl overflow-hidden aspect-video border border-white/10 bg-black">
+              <img
+                src={todayAttendance?.clockInPhoto || currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80'}
+                alt="Selfie Presensi"
+                className="w-full h-full object-cover"
+              />
+              <div className="absolute bottom-2 left-2 px-2.5 py-1 bg-black/80 backdrop-blur-md rounded-lg text-[10px] font-mono text-cyan-300">
+                📍 Verified Coordinates
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2 text-xs text-white/60">
+            <p className="font-bold text-white flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-cyan-400" />
+              Ketentuan Presensi Tim:
+            </p>
+            <ul className="list-disc list-inside space-y-1 text-[11px]">
+              <li>Wajib mengambil <strong>foto selfie langsung</strong> saat presensi.</li>
+              <li>Sistem mencatat <strong>titik koordinat GPS real-time</strong>.</li>
+              <li>Berlaku untuk seluruh anggota (Super Admin, Admin, dan Teknisi).</li>
+            </ul>
+          </div>
+        </div>
+      </div>
 
       {/* Attendance History Log Table */}
       <div className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="text-base font-black text-white tracking-tight">Log Riwayat Presensi & Geotag Seluruh Tim</h3>
+            <h3 className="text-base font-black text-white tracking-tight">Log Riwayat Presensi & Koordinat Seluruh Tim</h3>
             <p className="text-xs text-white/50">{attendanceRecords.length} Catatan Presensi Tercatat</p>
           </div>
-
-          {isSuperAdmin && (
-            <button
-              onClick={() => setShowAddManualModal(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-black font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-amber-500/20 transition cursor-pointer self-start sm:self-auto"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Tambah Presensi Manual</span>
-            </button>
-          )}
         </div>
 
         <div className="overflow-x-auto">
@@ -456,60 +434,74 @@ export const AttendanceView: React.FC = () => {
             <thead className="bg-white/5 text-white/70 font-black uppercase tracking-wider text-[10px] border-b border-white/10">
               <tr>
                 <th className="py-3 px-4">Foto Selfie</th>
-                <th className="py-3 px-4">Nama Teknisi</th>
+                <th className="py-3 px-4">Nama Anggota</th>
+                <th className="py-3 px-4">Jabatan / Role</th>
                 <th className="py-3 px-4">Tanggal</th>
                 <th className="py-3 px-4">Jam Masuk</th>
                 <th className="py-3 px-4">Jam Keluar</th>
-                <th className="py-3 px-4">Lokasi Geotag / Alamat</th>
+                <th className="py-3 px-4">Koordinat Geotag (Lat, Lng)</th>
                 <th className="py-3 px-4 text-center">Status</th>
                 {isSuperAdmin && <th className="py-3 px-4 text-center">Aksi</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/5">
-              {attendanceRecords.map(record => (
-                <tr key={record.id} className="hover:bg-white/5">
-                  <td className="py-2.5 px-4">
-                    {record.clockInPhoto ? (
-                      <div className="relative group w-12 h-12 rounded-xl overflow-hidden border border-white/20">
-                        <img
-                          src={record.clockInPhoto}
-                          alt={record.technicianName}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <span className="text-[10px] text-white/30 italic">-</span>
-                    )}
-                  </td>
-                  <td className="py-3 px-4 font-bold text-white">{record.technicianName}</td>
-                  <td className="py-3 px-4 font-mono text-white/70">{record.date}</td>
-                  <td className="py-3 px-4 font-mono font-bold text-cyan-400">{record.clockInTime} WIB</td>
-                  <td className="py-3 px-4 font-mono text-white/60">{record.clockOutTime ? `${record.clockOutTime} WIB` : 'Bertugas'}</td>
-                  <td className="py-3 px-4 text-white/60 max-w-xs truncate font-mono text-[11px]">{record.clockInLocation?.addressName || '-'}</td>
-                  <td className="py-3 px-4 text-center">
-                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                      TERVALIDASI
-                    </span>
-                  </td>
-                  {isSuperAdmin && (
-                    <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => setRecordToDelete(record)}
-                        title="Hapus Presensi (Super Admin)"
-                        className="p-1.5 bg-red-500/10 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg transition cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+              {attendanceRecords.map(record => {
+                const userObj = users.find(u => u.id === record.technicianId);
+                const displayRole = userObj?.role || (record.technicianName.toLowerCase().includes('admin') ? 'ADMIN' : 'TEKNISI');
+
+                const latVal = record.clockInLocation?.latitude ?? coords.lat;
+                const lngVal = record.clockInLocation?.longitude ?? coords.lng;
+
+                return (
+                  <tr key={record.id} className="hover:bg-white/5">
+                    <td className="py-2.5 px-4">
+                      {record.clockInPhoto ? (
+                        <div className="relative group w-12 h-12 rounded-xl overflow-hidden border border-white/20">
+                          <img
+                            src={record.clockInPhoto}
+                            alt={record.technicianName}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-white/30 italic">-</span>
+                      )}
                     </td>
-                  )}
-                </tr>
-              ))}
+                    <td className="py-3 px-4 font-bold text-white">{record.technicianName}</td>
+                    <td className="py-3 px-4">{getRoleBadge(displayRole)}</td>
+                    <td className="py-3 px-4 font-mono text-white/70">{record.date}</td>
+                    <td className="py-3 px-4 font-mono font-bold text-cyan-400">{record.clockInTime} WIB</td>
+                    <td className="py-3 px-4 font-mono text-white/60">{record.clockOutTime ? `${record.clockOutTime} WIB` : 'Bertugas'}</td>
+                    <td className="py-3 px-4 text-cyan-300 font-mono text-xs">
+                      {typeof latVal === 'number' && typeof lngVal === 'number'
+                        ? `${latVal.toFixed(6)}, ${lngVal.toFixed(6)}`
+                        : (record.clockInLocation?.addressName || '-')}
+                    </td>
+                    <td className="py-3 px-4 text-center">
+                      <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                        TERVALIDASI
+                      </span>
+                    </td>
+                    {isSuperAdmin && (
+                      <td className="py-3 px-4 text-center">
+                        <button
+                          onClick={() => setRecordToDelete(record)}
+                          title="Hapus Presensi (Super Admin)"
+                          className="p-1.5 bg-red-500/10 hover:bg-red-500/30 text-red-400 border border-red-500/30 rounded-lg transition cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* CONFIRMATION MODAL WITH LIVE SELFIE CAMERA AND GPS LOCATION WARNING */}
+      {/* CONFIRMATION MODAL WITH LIVE SELFIE CAMERA AND GPS COORDINATES ONLY */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
           <div className="bg-[#121216] border border-cyan-500/40 rounded-3xl p-6 sm:p-7 max-w-lg w-full shadow-2xl text-white space-y-5 max-h-[90vh] overflow-y-auto">
@@ -521,7 +513,7 @@ export const AttendanceView: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="text-base font-black text-white">
-                    {confirmActionType === 'CLOCK_IN' ? 'Foto Selfie & Validasi Presensi Masuk' : 'Validasi Presensi Pulang'}
+                    {confirmActionType === 'CLOCK_IN' ? 'Foto Selfie & Presensi Masuk' : 'Presensi Pulang'}
                   </h3>
                   <p className="text-xs text-white/50">{currentUser.name} • {todayStr}</p>
                 </div>
@@ -539,7 +531,7 @@ export const AttendanceView: React.FC = () => {
               <div className="flex items-center justify-between">
                 <label className="text-xs font-black uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
                   <Camera className="w-3.5 h-3.5" />
-                  1. Foto Selfie Lapangan (Wajib)
+                  1. Foto Selfie (Wajib)
                 </label>
                 {selfiePhoto && (
                   <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
@@ -650,54 +642,40 @@ export const AttendanceView: React.FC = () => {
               )}
             </div>
 
-            {/* Step 2: Warning with Coordinates and Street Name */}
+            {/* Step 2: Coordinates Only Display */}
             <div className="space-y-3">
-              <div className="p-4 bg-amber-950/30 border border-amber-500/40 rounded-2xl space-y-3">
-                <div className="flex items-center gap-2 text-amber-400">
-                  <AlertTriangle className="w-4 h-4 shrink-0" />
-                  <h4 className="text-xs font-black uppercase tracking-wider">
-                    2. Peringatan Validasi Lokasi & Geotag
-                  </h4>
+              <div className="p-4 bg-cyan-950/30 border border-cyan-500/40 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between text-cyan-400">
+                  <div className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 shrink-0" />
+                    <h4 className="text-xs font-black uppercase tracking-wider">
+                      2. Titik Koordinat GPS
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={fetchLiveGPS}
+                    title="Perbarui GPS"
+                    className="p-1.5 bg-cyan-500/20 hover:bg-cyan-500/40 text-cyan-300 rounded-lg text-xs font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span className="text-[10px]">Refresh</span>
+                  </button>
                 </div>
 
-                <div className="space-y-2 text-xs">
+                <div className="grid grid-cols-2 gap-2 p-2.5 bg-black/60 rounded-xl border border-white/10 text-xs font-mono">
                   <div>
-                    <label className="block text-[10px] uppercase font-bold text-amber-200/70 mb-1">
-                      Nama Jalan / Lokasi Presensi:
-                    </label>
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={customStreetName}
-                        onChange={e => setCustomStreetName(e.target.value)}
-                        placeholder="Nama jalan atau lokasi pengerjaan..."
-                        className="flex-1 p-2 bg-black/60 border border-amber-500/30 rounded-xl text-xs text-white focus:ring-1 focus:ring-amber-500 focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={fetchLiveGPS}
-                        title="Deteksi Ulang GPS"
-                        className="p-2 bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 rounded-xl text-xs font-bold cursor-pointer"
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </button>
-                    </div>
+                    <span className="text-white/40 block text-[9px] uppercase">Latitude</span>
+                    <span className="text-cyan-300 font-bold">{coords.lat.toFixed(6)}</span>
                   </div>
-
-                  <div className="grid grid-cols-2 gap-2 p-2.5 bg-black/40 rounded-xl border border-white/5 text-[11px] font-mono">
-                    <div>
-                      <span className="text-white/40 block text-[9px] uppercase">Koordinat GPS</span>
-                      <span className="text-cyan-400 font-bold">{coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}</span>
-                    </div>
-                    <div>
-                      <span className="text-white/40 block text-[9px] uppercase">Radius Akurasi</span>
-                      <span className="text-emerald-400 font-bold">±{coords.accuracy} Meter</span>
-                    </div>
+                  <div>
+                    <span className="text-white/40 block text-[9px] uppercase">Longitude</span>
+                    <span className="text-cyan-300 font-bold">{coords.lng.toFixed(6)}</span>
                   </div>
-                </div>
-
-                <div className="text-[11px] text-amber-200/80 leading-relaxed bg-amber-950/50 p-2.5 rounded-xl border border-amber-500/20">
-                  ⚠️ <strong>PENTING:</strong> Data koordinat, nama jalan, dan foto selfie Anda akan dikirim ke server dan dicocokkan dengan riwayat tugas servis lapangan.
+                  <div className="col-span-2 pt-1 border-t border-white/5 flex items-center justify-between text-[10px]">
+                    <span className="text-white/40">Radius Akurasi GPS:</span>
+                    <span className="text-emerald-400 font-bold">±{coords.accuracy} Meter</span>
+                  </div>
                 </div>
               </div>
 
@@ -710,7 +688,7 @@ export const AttendanceView: React.FC = () => {
                   className="mt-0.5 rounded bg-black border-white/20 text-cyan-500 focus:ring-0 w-4 h-4"
                 />
                 <span className="text-xs text-white/80 leading-snug">
-                  Saya menyatakan bahwa foto selfie dan koordinat lokasi di atas adalah benar posisi saya saat ini di lapangan.
+                  Saya menyatakan bahwa foto selfie dan titik koordinat GPS di atas adalah benar posisi saya saat ini.
                 </span>
               </label>
             </div>
@@ -742,138 +720,7 @@ export const AttendanceView: React.FC = () => {
         </div>
       )}
 
-      {/* Super Admin Add Manual Modal */}
-      {showAddManualModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="bg-[#141414] rounded-3xl p-6 max-w-md w-full border border-amber-500/40 shadow-2xl space-y-4 text-white">
-            <div className="flex items-center justify-between pb-3 border-b border-white/10">
-              <div className="flex items-center gap-2">
-                <Crown className="w-5 h-5 text-amber-400" />
-                <h3 className="font-black text-sm text-white">Tambah Presensi Manual (Super Admin)</h3>
-              </div>
-              <button onClick={() => setShowAddManualModal(false)} className="text-white/40 hover:text-white cursor-pointer">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form
-              onSubmit={(e) => {
-                e.preventDefault();
-                const tech = users.find(u => u.id === selectedTechId);
-                if (!tech) return;
-
-                addAttendanceRecord({
-                  technicianId: tech.id,
-                  technicianName: tech.name,
-                  date: manualDate,
-                  clockInTime: manualClockIn,
-                  clockOutTime: manualClockOut,
-                  clockInLocation: {
-                    latitude: -6.2088,
-                    longitude: 106.8456,
-                    addressName: manualAddress
-                  },
-                  clockInPhoto: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80',
-                  dailyAllowanceEarned: manualAllowance,
-                  isVerified: true
-                });
-
-                showNotification(`Presensi manual untuk ${tech.name} berhasil ditambahkan.`);
-                setShowAddManualModal(false);
-              }}
-              className="space-y-3 text-xs"
-            >
-              <div>
-                <label className="block font-black uppercase tracking-wider text-white/60 mb-1">Pilih Teknisi</label>
-                <select
-                  value={selectedTechId}
-                  onChange={e => setSelectedTechId(e.target.value)}
-                  required
-                  className="w-full p-2.5 bg-white/5 border border-white/10 rounded-xl text-white font-bold"
-                >
-                  {techniciansList.map(t => (
-                    <option key={t.id} value={t.id} className="bg-[#121212]">{t.name} ({t.phone})</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block font-black uppercase tracking-wider text-white/60 mb-1">Tanggal</label>
-                <input
-                  type="date"
-                  value={manualDate}
-                  onChange={e => setManualDate(e.target.value)}
-                  required
-                  className="w-full p-2.5 bg-white/5 border border-white/10 rounded-xl text-white font-mono"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-black uppercase tracking-wider text-white/60 mb-1">Jam Masuk</label>
-                  <input
-                    type="time"
-                    value={manualClockIn}
-                    onChange={e => setManualClockIn(e.target.value)}
-                    required
-                    className="w-full p-2.5 bg-white/5 border border-white/10 rounded-xl text-white font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block font-black uppercase tracking-wider text-white/60 mb-1">Jam Keluar</label>
-                  <input
-                    type="time"
-                    value={manualClockOut}
-                    onChange={e => setManualClockOut(e.target.value)}
-                    required
-                    className="w-full p-2.5 bg-white/5 border border-white/10 rounded-xl text-white font-mono"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-black uppercase tracking-wider text-white/60 mb-1">Lokasi / Alamat Tugas</label>
-                <input
-                  type="text"
-                  value={manualAddress}
-                  onChange={e => setManualAddress(e.target.value)}
-                  required
-                  className="w-full p-2.5 bg-white/5 border border-white/10 rounded-xl text-white"
-                />
-              </div>
-
-              <div>
-                <label className="block font-black uppercase tracking-wider text-white/60 mb-1">Uang Kehadiran Harian (Rp)</label>
-                <input
-                  type="number"
-                  value={manualAllowance}
-                  onChange={e => setManualAllowance(Number(e.target.value))}
-                  required
-                  className="w-full p-2.5 bg-white/5 border border-white/10 rounded-xl text-white font-bold"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowAddManualModal(false)}
-                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-amber-500 hover:bg-amber-400 text-black font-black uppercase tracking-wider rounded-xl cursor-pointer"
-                >
-                  Simpan Presensi
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Delete Record Confirmation Modal */}
+      {/* Delete Record Confirmation Modal for Super Admin */}
       {recordToDelete && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-in fade-in duration-150">
           <div className="max-w-md w-full bg-[#181818] border border-red-500/40 rounded-3xl p-6 text-white space-y-4 shadow-2xl">
@@ -888,7 +735,7 @@ export const AttendanceView: React.FC = () => {
             </div>
 
             <p className="text-xs text-white/70 leading-relaxed">
-              Apakah Anda yakin ingin menghapus data presensi ini? Data yang terhapus akan memengaruhi rekapan uang kehadiran teknisi.
+              Apakah Anda yakin ingin menghapus data presensi ini?
             </p>
 
             <div className="flex justify-end gap-2 pt-2">
@@ -916,3 +763,4 @@ export const AttendanceView: React.FC = () => {
     </div>
   );
 };
+
