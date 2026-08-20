@@ -29,6 +29,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 }) => {
   const { 
     currentUser, 
+    users,
     serviceOrders, 
     inventory, 
     financialTransactions, 
@@ -473,9 +474,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 </div>
                 <div>
                   <span className="text-black/50 block text-[10px] uppercase font-bold">Teknisi Bertugas</span>
-                  <p className="font-black text-black text-sm mt-0.5">
-                    {customerActiveOrder.technicianName || 'Sedang Dipersiapkan Admin'}
-                  </p>
+                  {customerActiveOrder.technicianName ? (() => {
+                    const techUser = users.find(
+                      u => u.id === customerActiveOrder.technicianId ||
+                           (u.name && u.name.trim().toLowerCase() === customerActiveOrder.technicianName?.trim().toLowerCase())
+                    );
+                    let avatarSrc = techUser?.avatar;
+                    if (!avatarSrc || avatarSrc.includes('photo-1534528741775-53994a69daeb')) {
+                      avatarSrc = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80';
+                    }
+
+                    return (
+                      <div className="flex items-center gap-2 mt-1">
+                        <img
+                          src={avatarSrc}
+                          alt={customerActiveOrder.technicianName}
+                          className="w-8 h-8 rounded-full object-cover border border-black/20 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="font-black text-black text-sm truncate">
+                            {customerActiveOrder.technicianName}
+                          </p>
+                          <p className="text-[10px] text-emerald-700 font-bold flex items-center gap-0.5">
+                            <ShieldCheck className="w-3 h-3 text-emerald-600" /> Terverifikasi
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })() : (
+                    <p className="font-black text-black text-sm mt-0.5">
+                      Sedang Dipersiapkan Admin
+                    </p>
+                  )}
                 </div>
                 <div>
                   <span className="text-black/50 block text-[10px] uppercase font-bold">Status Pengerjaan</span>

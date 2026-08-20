@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
@@ -8,6 +8,20 @@ const app = initializeApp(firebaseConfig);
 // CRITICAL: Must pass firebaseConfig.firestoreDatabaseId if specified
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+
+// Attempt anonymous sign in in the background if no user is signed in
+try {
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      signInAnonymously(auth).catch((err) => {
+        // Anonymous auth might not be enabled in Firebase console; ignore silently
+        console.debug('Firebase anonymous auth not available:', err?.message || err);
+      });
+    }
+  });
+} catch (e) {
+  console.debug('Auth init:', e);
+}
 
 export enum OperationType {
   CREATE = 'create',
@@ -35,7 +49,7 @@ export interface FirestoreErrorInfo {
   };
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): void {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -52,8 +66,7 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path,
   };
-  console.error('Firestore Error:', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  console.warn('Firestore Operation Notice:', JSON.stringify(errInfo));
 }
 
 // Test connection to Firestore

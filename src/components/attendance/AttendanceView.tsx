@@ -424,7 +424,7 @@ export const AttendanceView: React.FC = () => {
             </span>
             <div className="relative rounded-2xl overflow-hidden aspect-video border border-white/10 bg-black">
               <img
-                src={todayAttendance?.clockInPhoto || currentUser.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=300&auto=format&fit=crop&q=80'}
+                src={todayAttendance?.clockInPhoto || (currentUser.avatar && !currentUser.avatar.includes('photo-1534528741775-53994a69daeb') ? currentUser.avatar : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80')}
                 alt="Selfie Presensi"
                 className="w-full h-full object-cover"
               />

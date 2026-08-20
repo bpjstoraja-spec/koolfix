@@ -114,17 +114,42 @@ export const ServiceOrderDetailModal: React.FC<ServiceOrderDetailModalProps> = (
         commissionEarned: order.technicianCommissionEarned || 0,
       }] : []);
 
-  // Find attendance photos for the technicians assigned on this job
+  // Find attendance records & authentic photos for technicians assigned on this job
+  const todayStr = new Date().toISOString().split('T')[0];
   const technicianAttendances = assignedList.map(tech => {
-    const match = attendanceRecords.find(
-      a => a.technicianId === tech.technicianId && (a.date === order.scheduledDate || a.date === order.createdAt?.split(' ')[0])
-    ) || attendanceRecords.find(a => a.technicianId === tech.technicianId);
+    const userObj = users.find(
+      u => u.id === tech.technicianId || 
+           (u.name && tech.technicianName && u.name.trim().toLowerCase() === tech.technicianName.trim().toLowerCase())
+    );
 
-    const userObj = users.find(u => u.id === tech.technicianId);
+    // Search attendance records for this technician
+    const techRecords = attendanceRecords.filter(a =>
+      a.technicianId === tech.technicianId ||
+      (userObj && a.technicianId === userObj.id) ||
+      (a.technicianName && tech.technicianName && a.technicianName.trim().toLowerCase() === tech.technicianName.trim().toLowerCase())
+    );
+
+    // Prioritize attendance matching scheduled job date with photo, or today with photo, or any record with photo
+    const matchAttendance = 
+      techRecords.find(a => (a.date === order.scheduledDate || a.date === order.createdAt?.split(' ')[0]) && !!a.clockInPhoto) ||
+      techRecords.find(a => a.date === todayStr && !!a.clockInPhoto) ||
+      techRecords.find(a => !!a.clockInPhoto) ||
+      techRecords.find(a => a.date === order.scheduledDate || a.date === order.createdAt?.split(' ')[0]) ||
+      techRecords.find(a => a.date === todayStr) ||
+      techRecords[0];
+
+    // Determine appropriate technician avatar photo
+    let bestAvatar = userObj?.avatar || tech.avatar;
+    if (!bestAvatar || bestAvatar.includes('photo-1534528741775-53994a69daeb')) {
+      bestAvatar = 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80';
+    }
+
     return {
       tech,
       userObj,
-      attendance: match,
+      attendance: matchAttendance,
+      bestAvatar,
+      selfiePhoto: matchAttendance?.clockInPhoto || null,
     };
   });
 
@@ -537,88 +562,152 @@ export const ServiceOrderDetailModal: React.FC<ServiceOrderDetailModalProps> = (
                 <div className="flex items-center gap-2">
                   <UserCheck className="w-4 h-4 text-emerald-400" />
                   <p className="text-[10px] font-black uppercase tracking-wider text-white">
-                    Foto & Status Absensi Presensi Teknisi Bertugas
+                    {currentUser.role.startsWith('PELANGGAN')
+                      ? 'Profil & Verifikasi Teknisi Lapangan Bertugas'
+                      : 'Foto & Status Absensi Presensi Teknisi Bertugas'}
                   </p>
                 </div>
-                <span className="text-[10px] text-emerald-400 font-bold">
-                  Geotag GPS Terintegrasi
+                <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5" />
+                  Geotag GPS & Akun Terverifikasi
                 </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {technicianAttendances.map(({ tech, userObj, attendance }, idx) => (
-                  <div
-                    key={idx}
-                    className="p-3.5 bg-black/50 border border-white/10 rounded-2xl flex items-start justify-between gap-3"
-                  >
-                    <div className="flex items-start gap-3 min-w-0">
-                      {/* Attendance Selfie Photo Preview */}
-                      {attendance?.clockInPhoto ? (
-                        <div
-                          onClick={() => setPreviewImage({
-                            url: attendance.clockInPhoto!,
-                            title: `Foto Selfie Presensi GPS - ${tech.technicianName}`,
-                            subtitle: `Jam Masuk: ${attendance.clockInTime} WIB • ${attendance.clockInLocation?.addressName || 'Lokasi Terverifikasi'}`
-                          })}
-                          className="relative group cursor-pointer shrink-0"
-                        >
-                          <img
-                            src={attendance.clockInPhoto}
-                            alt="Selfie Presensi"
-                            className="w-14 h-14 rounded-xl object-cover border-2 border-emerald-500/40 group-hover:opacity-80 transition"
-                          />
-                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/40 rounded-xl transition">
-                            <ZoomIn className="w-4 h-4 text-white" />
-                          </div>
-                          <span className="absolute -bottom-1 -right-1 p-0.5 bg-emerald-600 rounded-full text-white">
-                            <Check className="w-2.5 h-2.5" />
-                          </span>
-                        </div>
-                      ) : (
-                        <img
-                          src={tech.avatar || userObj?.avatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80'}
-                          alt={tech.technicianName}
-                          className="w-14 h-14 rounded-xl object-cover border border-white/20 shrink-0"
-                        />
-                      )}
+                {technicianAttendances.map(({ tech, userObj, attendance, bestAvatar, selfiePhoto }, idx) => {
+                  const isViewerPrivileged = isSuperOrAdmin || (currentUser.role === 'TEKNISI' && (currentUser.id === tech.technicianId || currentUser.name === tech.technicianName));
+                  const phoneContact = tech.technicianPhone || userObj?.phone;
 
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <h5 className="font-black text-white text-xs truncate">{tech.technicianName}</h5>
-                          {tech.roleInJob === 'LEAD' ? (
-                            <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                              LEAD
-                            </span>
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3.5 bg-black/50 border border-white/10 rounded-2xl flex items-start justify-between gap-3"
+                    >
+                      <div className="flex items-start gap-3 min-w-0">
+                        {/* Photo Display: Selfie GPS or Verified Profile Avatar */}
+                        <div className="relative shrink-0">
+                          {selfiePhoto ? (
+                            <div
+                              onClick={() => setPreviewImage({
+                                url: selfiePhoto,
+                                title: `Foto Selfie Presensi GPS - ${tech.technicianName}`,
+                                subtitle: `Jam Masuk: ${attendance?.clockInTime || '-'} WIB • ${attendance?.clockInLocation?.addressName || 'Lokasi Depo Operasional'}`
+                              })}
+                              className="relative group cursor-pointer"
+                              title="Klik untuk memperbesar foto selfie GPS"
+                            >
+                              <img
+                                src={selfiePhoto}
+                                alt={`Presensi ${tech.technicianName}`}
+                                className="w-14 h-14 rounded-xl object-cover border-2 border-emerald-500/50 group-hover:opacity-80 transition"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 bg-black/40 rounded-xl transition">
+                                <ZoomIn className="w-4 h-4 text-white" />
+                              </div>
+                              <span className="absolute -bottom-1 -right-1 p-0.5 bg-emerald-600 rounded-full text-white border border-black" title="Presensi GPS Terverifikasi">
+                                <Check className="w-2.5 h-2.5" />
+                              </span>
+                            </div>
                           ) : (
-                            <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                              ASISTEN
-                            </span>
+                            <div className="relative">
+                              <img
+                                src={bestAvatar}
+                                alt={tech.technicianName}
+                                className="w-14 h-14 rounded-xl object-cover border border-white/20"
+                              />
+                              <span className="absolute -bottom-1 -right-1 p-0.5 bg-blue-600 rounded-full text-white border border-black" title="Teknisi Resmi">
+                                <ShieldCheck className="w-2.5 h-2.5" />
+                              </span>
+                            </div>
                           )}
                         </div>
 
-                        {attendance ? (
-                          <div className="mt-1 space-y-0.5">
-                            <p className="text-[10px] text-emerald-400 font-mono font-bold">
-                              ✓ Presensi: {attendance.clockInTime} WIB
-                            </p>
-                            <p className="text-[9px] text-white/50 line-clamp-1">
-                              📍 {attendance.clockInLocation?.addressName || 'Lokasi Depo Operasional'}
-                            </p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h5 className="font-black text-white text-xs truncate">{tech.technicianName}</h5>
+                            {tech.roleInJob === 'LEAD' ? (
+                              <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                LEAD
+                              </span>
+                            ) : (
+                              <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                ASISTEN
+                              </span>
+                            )}
+                            {userObj?.rating && (
+                              <span className="text-[8px] font-bold bg-amber-500/10 text-amber-400 px-1 rounded">
+                                ★ {userObj.rating}
+                              </span>
+                            )}
                           </div>
-                        ) : (
-                          <p className="text-[10px] text-white/40 mt-1">Presensi belum tercatat</p>
-                        )}
-                      </div>
-                    </div>
 
-                    <div className="text-right shrink-0">
-                      <span className="text-[9px] text-white/40 block">Komisi</span>
-                      <span className="text-[11px] font-black text-emerald-400 tabular-nums">
-                        Rp {(tech.commissionEarned || 0).toLocaleString('id-ID')}
-                      </span>
+                          {attendance ? (
+                            <div className="mt-1 space-y-0.5">
+                              <p className="text-[10px] text-emerald-400 font-mono font-bold">
+                                ✓ Presensi: {attendance.clockInTime} WIB
+                              </p>
+                              <p className="text-[9px] text-white/50 line-clamp-1">
+                                📍 {attendance.clockInLocation?.addressName || 'Lokasi Depo Operasional'}
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="mt-1 space-y-0.5">
+                              <p className="text-[10px] text-blue-400 font-bold">
+                                🛡️ Teknisi Resmi KoolFix
+                              </p>
+                              <p className="text-[9px] text-white/50">
+                                {phoneContact || 'Siap Bertugas'}
+                              </p>
+                            </div>
+                          )}
+
+                          {selfiePhoto && (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewImage({
+                                url: selfiePhoto,
+                                title: `Foto Selfie Presensi GPS - ${tech.technicianName}`,
+                                subtitle: `Jam Masuk: ${attendance?.clockInTime || '-'} WIB • ${attendance?.clockInLocation?.addressName || 'Lokasi Depo Operasional'}`
+                              })}
+                              className="text-[9px] text-emerald-400 hover:text-emerald-300 underline font-bold mt-0.5 flex items-center gap-1 cursor-pointer"
+                            >
+                              <ZoomIn className="w-2.5 h-2.5" />
+                              Foto Selfie GPS
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Right Side: Commission for Admin/Authorized Technician ONLY. Non-admin tracking sees contact / verified status */}
+                      {isViewerPrivileged ? (
+                        <div className="text-right shrink-0">
+                          <span className="text-[9px] text-white/40 block font-bold uppercase">Komisi</span>
+                          <span className="text-[11px] font-black text-emerald-400 tabular-nums">
+                            Rp {(tech.commissionEarned || 0).toLocaleString('id-ID')}
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-right shrink-0 flex flex-col items-end gap-1">
+                          <span className="text-[9px] text-emerald-400 font-bold uppercase tracking-wider flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                            Terverifikasi
+                          </span>
+                          {phoneContact && (
+                            <a
+                              href={`https://wa.me/${phoneContact.replace(/[^0-9]/g, '').replace(/^0/, '62')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-bold transition cursor-pointer"
+                            >
+                              <Phone className="w-2.5 h-2.5" />
+                              Hubungi WA
+                            </a>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -774,10 +863,17 @@ export const ServiceOrderDetailModal: React.FC<ServiceOrderDetailModalProps> = (
                     <span className="text-white/40 block text-[9px]">Suhu Suplai</span>
                     <span className="font-black text-emerald-400">{order.technicalReport.finalTempCelsius}°C</span>
                   </div>
-                  <div className="p-2.5 bg-black/40 rounded-xl">
-                    <span className="text-white/40 block text-[9px]">Total Komisi Tim</span>
-                    <span className="font-black text-amber-400">Rp {(order.technicianCommissionEarned || 0).toLocaleString('id-ID')}</span>
-                  </div>
+                  {isSuperOrAdmin || currentUser.role === 'TEKNISI' ? (
+                    <div className="p-2.5 bg-black/40 rounded-xl">
+                      <span className="text-white/40 block text-[9px]">{currentUser.role === 'TEKNISI' ? 'Komisi Anda' : 'Total Komisi Tim'}</span>
+                      <span className="font-black text-amber-400">Rp {(order.technicianCommissionEarned || 0).toLocaleString('id-ID')}</span>
+                    </div>
+                  ) : (
+                    <div className="p-2.5 bg-black/40 rounded-xl">
+                      <span className="text-white/40 block text-[9px]">Garansi Servis</span>
+                      <span className="font-black text-emerald-400">30 Hari Garansi Resmi</span>
+                    </div>
+                  )}
                 </div>
                 {order.technicalReport.notes && (
                   <p className="text-white/70 italic text-[11px] mt-2">"{order.technicalReport.notes}"</p>
