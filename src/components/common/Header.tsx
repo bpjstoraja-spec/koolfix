@@ -48,9 +48,17 @@ export const Header: React.FC<HeaderProps> = ({
     inventory,
     companyProfile,
     isCloudSynced,
-    cloudSyncStatus
+    cloudSyncStatus,
+    syncAllDataToCloudNow
   } = useApp();
   const [showRoleDropdown, setShowRoleDropdown] = useState(false);
+  const [isHeaderSyncing, setIsHeaderSyncing] = useState(false);
+
+  const handleHeaderCloudSync = async () => {
+    setIsHeaderSyncing(true);
+    await syncAllDataToCloudNow();
+    setIsHeaderSyncing(false);
+  };
 
   // Compute pending counts
   const pendingOrders = serviceOrders.filter(o => o.status === 'MENUNGGU_KONFIRMASI').length;
@@ -130,10 +138,15 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
 
               {cloudSyncStatus === 'connected' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 rounded-md" title="Database Firestore Cloud Real-time Terhubung">
-                  <Cloud className="w-3 h-3 text-emerald-400" />
-                  <span>Cloud Sinkron</span>
-                </span>
+                <button 
+                  onClick={handleHeaderCloudSync}
+                  disabled={isHeaderSyncing}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-md transition cursor-pointer" 
+                  title="Database Firestore Cloud Terhubung. Klik untuk menyinkronkan seluruh data ke cloud."
+                >
+                  <Cloud className={`w-3 h-3 text-emerald-400 ${isHeaderSyncing ? 'animate-bounce' : ''}`} />
+                  <span>{isHeaderSyncing ? 'Menyinkronkan...' : 'Cloud Sinkron'}</span>
+                </button>
               )}
               {cloudSyncStatus === 'syncing' && (
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase bg-amber-500/10 text-amber-300 border border-amber-500/30 rounded-md">
@@ -142,10 +155,15 @@ export const Header: React.FC<HeaderProps> = ({
                 </span>
               )}
               {cloudSyncStatus === 'offline' && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase bg-rose-500/10 text-rose-300 border border-rose-500/30 rounded-md" title="Berjalan dalam mode offline lokal">
+                <button 
+                  onClick={handleHeaderCloudSync}
+                  disabled={isHeaderSyncing}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 rounded-md transition cursor-pointer" 
+                  title="Mode Offline Cache. Klik untuk mencoba menghubungkan & sinkronisasi data ke Cloud Firestore."
+                >
                   <CloudOff className="w-3 h-3 text-rose-300" />
-                  <span>Offline Cache</span>
-                </span>
+                  <span>{isHeaderSyncing ? 'Menyinkronkan...' : 'Offline (Klik Sinkron)'}</span>
+                </button>
               )}
             </div>
           </div>

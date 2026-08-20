@@ -48,7 +48,9 @@ import {
   saveDocCloud,
   updateDocCloud,
   deleteDocCloud,
-  cleanForFirestore
+  cleanForFirestore,
+  syncAttendanceRecordsBatch,
+  syncAllCollectionsToCloud
 } from '../services/firestoreSync';
 import { testFirestoreConnection } from '../firebase';
 
@@ -56,6 +58,8 @@ interface AppContextType {
   // Cloud Synchronization Status
   isCloudSynced: boolean;
   cloudSyncStatus: 'connected' | 'syncing' | 'offline';
+  syncAttendanceToCloud: () => Promise<boolean>;
+  syncAllDataToCloudNow: () => Promise<boolean>;
 
   // Company Profile (Managed by Super Admin)
   companyProfile: CompanyProfile;
@@ -467,12 +471,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unsubs.push(unsubInvTrx);
 
         const unsubAtt = subscribeToCollection<AttendanceRecord>(COLLECTIONS.ATTENDANCE, (data) => {
-          if (data) setAttendanceRecords(data);
+          if (data && data.length > 0) {
+            setAttendanceRecords(data);
+          } else if (data && data.length === 0) {
+            // Cloud collection is currently empty: try auto-uploading existing local attendance records
+            const saved = localStorage.getItem(STORAGE_KEYS.ATTENDANCE);
+            const localList: AttendanceRecord[] = saved ? JSON.parse(saved) : [];
+            if (localList.length > 0) {
+              console.log('☁️ Auto-syncing local attendance records to fresh cloud database...');
+              syncAttendanceRecordsBatch(localList);
+            }
+          }
         });
         unsubs.push(unsubAtt);
 
         const unsubFin = subscribeToCollection<FinancialTransaction>(COLLECTIONS.FINANCE, (data) => {
-          if (data) setFinancialTransactions(data);
+          if (data && data.length > 0) setFinancialTransactions(data);
         });
         unsubs.push(unsubFin);
 
@@ -493,6 +507,62 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
     };
   }, []);
+
+  const syncAttendanceToCloud = async (): Promise<boolean> => {
+    try {
+      setCloudSyncStatus('syncing');
+      const res = await syncAttendanceRecordsBatch(attendanceRecords);
+      if (res.success) {
+        setCloudSyncStatus('connected');
+        setIsCloudSynced(true);
+        showNotification(`Berhasil menyinkronkan ${attendanceRecords.length} data presensi ke Cloud Firestore!`, 'success');
+        return true;
+      } else {
+        setCloudSyncStatus('offline');
+        showNotification(`Gagal menyinkronkan data presensi: ${res.error || 'Periksa koneksi/kredensial'}`, 'error');
+        return false;
+      }
+    } catch (err: any) {
+      setCloudSyncStatus('offline');
+      showNotification(`Gagal sinkronisasi presensi: ${err?.message || 'Error'}`, 'error');
+      return false;
+    }
+  };
+
+  const syncAllDataToCloudNow = async (): Promise<boolean> => {
+    try {
+      setCloudSyncStatus('syncing');
+      const res = await syncAllCollectionsToCloud({
+        users,
+        serviceOrders,
+        inventory,
+        inventoryTransactions,
+        attendanceRecords,
+        financialTransactions,
+        companyProfile,
+        serviceCategories,
+        productPackages,
+        acUnits,
+        roleDefaultPermissions,
+        globalSalaryConfig,
+      });
+
+      if (res.success) {
+        setCloudSyncStatus('connected');
+        setIsCloudSynced(true);
+        showNotification('Semua data master, operasional, & presensi berhasil disinkronkan ke Cloud Firestore!', 'success');
+        return true;
+      } else {
+        setCloudSyncStatus('offline');
+        showNotification(`Gagal sinkronisasi data: ${res.error || 'Periksa database'}`, 'error');
+        return false;
+      }
+    } catch (err: any) {
+      setCloudSyncStatus('offline');
+      showNotification(`Gagal sinkronisasi cloud: ${err?.message || 'Error'}`, 'error');
+      return false;
+    }
+  };
 
   // Sync state changes to localStorage for offline cache
   useEffect(() => { localStorage.setItem(STORAGE_KEYS.IS_AUTH, JSON.stringify(isAuthenticated)); }, [isAuthenticated]);
@@ -1987,6 +2057,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       clearNotification,
       isCloudSynced,
       cloudSyncStatus,
+      syncAttendanceToCloud,
+      syncAllDataToCloudNow,
     }}>
       {children}
     </AppContext.Provider>

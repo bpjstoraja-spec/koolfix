@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   Upload,
   User,
-  Shield
+  Shield,
+  Cloud
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { compressImage } from '../../utils/imageCompressor';
@@ -28,8 +29,19 @@ export const AttendanceView: React.FC = () => {
     clockIn, 
     clockOut, 
     deleteAttendanceRecord,
-    showNotification 
+    showNotification,
+    isCloudSynced,
+    cloudSyncStatus,
+    syncAttendanceToCloud
   } = useApp();
+
+  const [isSyncingCloud, setIsSyncingCloud] = useState(false);
+
+  const handleManualCloudSync = async () => {
+    setIsSyncingCloud(true);
+    await syncAttendanceToCloud();
+    setIsSyncingCloud(false);
+  };
 
   const isSuperAdmin = currentUser.role === 'SUPER_ADMIN';
   const todayStr = new Date().toISOString().split('T')[0];
@@ -294,14 +306,30 @@ export const AttendanceView: React.FC = () => {
           </h2>
         </div>
 
-        <button
-          onClick={fetchLiveGPS}
-          disabled={isGettingLocation}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer self-start sm:self-auto"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isGettingLocation ? 'animate-spin' : ''}`} />
-          <span>Perbarui GPS</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <button
+            onClick={handleManualCloudSync}
+            disabled={isSyncingCloud || cloudSyncStatus === 'syncing'}
+            className={`inline-flex items-center gap-2 px-4 py-2 border rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer ${
+              cloudSyncStatus === 'connected'
+                ? 'bg-cyan-500/10 hover:bg-cyan-500/20 border-cyan-500/30 text-cyan-300'
+                : 'bg-amber-500/10 hover:bg-amber-500/20 border-amber-500/30 text-amber-300'
+            }`}
+            title="Klik untuk menyinkronkan seluruh data presensi ke cloud Firestore"
+          >
+            <Cloud className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-bounce' : ''}`} />
+            <span>{isSyncingCloud ? 'Menyinkronkan...' : `Cloud Sync (${attendanceRecords.length})`}</span>
+          </button>
+
+          <button
+            onClick={fetchLiveGPS}
+            disabled={isGettingLocation}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-white rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isGettingLocation ? 'animate-spin' : ''}`} />
+            <span>Perbarui GPS</span>
+          </button>
+        </div>
       </div>
 
       {/* Attendance Panel for Every Team Member (Super Admin, Admin, and Teknisi) */}

@@ -226,7 +226,94 @@ export function subscribeToSystemSettings(
   };
 }
 
-// ----------------- WRITE OPERATIONS -----------------
+// ----------------- BATCH SYNC OPERATIONS -----------------
+
+export async function syncAttendanceRecordsBatch(records: AttendanceRecord[]): Promise<{ success: boolean; count: number; error?: string }> {
+  if (!records || records.length === 0) return { success: true, count: 0 };
+  try {
+    const chunkSize = 400;
+    for (let i = 0; i < records.length; i += chunkSize) {
+      const chunk = records.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach(record => {
+        const cleaned = cleanForFirestore(record);
+        batch.set(doc(db, COLLECTIONS.ATTENDANCE, record.id), cleaned, { merge: true });
+      });
+      await batch.commit();
+    }
+    return { success: true, count: records.length };
+  } catch (error) {
+    console.error('Error syncing attendance records to cloud:', error);
+    return { 
+      success: false, 
+      count: 0, 
+      error: error instanceof Error ? error.message : String(error) 
+    };
+  }
+}
+
+export async function syncAllCollectionsToCloud(data: {
+  users?: User[];
+  serviceOrders?: ServiceOrder[];
+  inventory?: InventoryItem[];
+  inventoryTransactions?: InventoryTransaction[];
+  attendanceRecords?: AttendanceRecord[];
+  financialTransactions?: FinancialTransaction[];
+  companyProfile?: CompanyProfile;
+  serviceCategories?: ServiceCategory[];
+  productPackages?: ProductPackage[];
+  acUnits?: ACUnit[];
+  roleDefaultPermissions?: RoleDefaultPermissions;
+  globalSalaryConfig?: SalaryConfig;
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    const batch = writeBatch(db);
+
+    if (data.companyProfile) {
+      batch.set(doc(db, COLLECTIONS.COMPANY_PROFILE, 'default'), cleanForFirestore(data.companyProfile), { merge: true });
+    }
+    if (data.roleDefaultPermissions) {
+      batch.set(doc(db, COLLECTIONS.SYSTEM_SETTINGS, 'permissions'), cleanForFirestore({ value: data.roleDefaultPermissions }), { merge: true });
+    }
+    if (data.globalSalaryConfig) {
+      batch.set(doc(db, COLLECTIONS.SYSTEM_SETTINGS, 'salaryConfig'), cleanForFirestore({ value: data.globalSalaryConfig }), { merge: true });
+    }
+    if (data.users) {
+      data.users.forEach(u => batch.set(doc(db, COLLECTIONS.USERS, u.id), cleanForFirestore(u), { merge: true }));
+    }
+    if (data.serviceCategories) {
+      data.serviceCategories.forEach(c => batch.set(doc(db, COLLECTIONS.CATEGORIES, c.id), cleanForFirestore(c), { merge: true }));
+    }
+    if (data.productPackages) {
+      data.productPackages.forEach(p => batch.set(doc(db, COLLECTIONS.PACKAGES, p.id), cleanForFirestore(p), { merge: true }));
+    }
+    if (data.acUnits) {
+      data.acUnits.forEach(u => batch.set(doc(db, COLLECTIONS.AC_UNITS, u.id), cleanForFirestore(u), { merge: true }));
+    }
+    if (data.inventory) {
+      data.inventory.forEach(item => batch.set(doc(db, COLLECTIONS.INVENTORY, item.id), cleanForFirestore(item), { merge: true }));
+    }
+    if (data.inventoryTransactions) {
+      data.inventoryTransactions.forEach(trx => batch.set(doc(db, COLLECTIONS.INVENTORY_TRX, trx.id), cleanForFirestore(trx), { merge: true }));
+    }
+    if (data.attendanceRecords) {
+      data.attendanceRecords.forEach(att => batch.set(doc(db, COLLECTIONS.ATTENDANCE, att.id), cleanForFirestore(att), { merge: true }));
+    }
+    if (data.financialTransactions) {
+      data.financialTransactions.forEach(fin => batch.set(doc(db, COLLECTIONS.FINANCE, fin.id), cleanForFirestore(fin), { merge: true }));
+    }
+    if (data.serviceOrders) {
+      data.serviceOrders.forEach(o => batch.set(doc(db, COLLECTIONS.SERVICE_ORDERS, o.id), cleanForFirestore(o), { merge: true }));
+    }
+
+    await batch.commit();
+    return { success: true };
+  } catch (error) {
+    console.error('Error syncing all collections to cloud:', error);
+    return { success: false, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 
 export async function saveCompanyProfileCloud(profile: CompanyProfile) {
   try {
